@@ -1,0 +1,4 @@
+interface:
+  display_name: "Juniper Mist API Development"
+  short_description: "Build and debug Juniper Mist API workflows"
+  default_prompt: "Use $mist-api to verify and safely implement this Juniper Mist API workflow."

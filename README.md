@@ -1,0 +1,180 @@
+# Mist API Agent Skill
+
+An unofficial assistant skill for working with the Juniper Mist API. It helps an AI coding assistant create, review, troubleshoot, and safely plan Mist automation.
+
+This project is independent and is not affiliated with, endorsed by, or sponsored by Juniper Networks.
+
+## How the skill works
+
+`SKILL.md` controls the workflow. When a Mist task requires exact endpoint, field, authentication, or pagination details, the assistant engages the supporting scripts in this order:
+
+```text
+Mist API request
+    |
+    v
+SKILL.md determines the scope and information needed
+    |
+    v
+refresh_openapi.py --offline checks for a valid cached API specification
+    |
+    +-- Cache missing or freshness matters --> refresh_openapi.py downloads it
+    |
+    v
+query_spec.py searches the cached specification
+    |
+    +-- find --> locate possible endpoints
+    +-- show --> inspect one endpoint
+    +-- operation/schema --> inspect request and response fields
+    +-- tag/tags --> browse related endpoint groups
+    |
+    v
+The assistant reads the relevant example or reference file
+    |
+    v
+The assistant produces the requested explanation, code, or change plan
+```
+
+The scripts under `scripts/` inspect API documentation only. They do not connect to a Mist tenant or change its configuration.
+
+### When each support script is engaged
+
+#### `scripts/refresh_openapi.py`
+
+This script manages the local copy of Juniper's Mist OpenAPI specification.
+
+- `python scripts/refresh_openapi.py --offline` is engaged first. It verifies that a usable cached specification exists without using the network or writing files.
+- `python scripts/refresh_openapi.py` is engaged when no valid cache exists or when current API details are important. It downloads the specification from Juniper, validates it, and safely replaces the cached copy.
+- If a download fails, the existing valid cache remains in place.
+
+#### `scripts/spec_cache.py`
+
+This is a shared internal helper. A user normally does not run it directly.
+
+It is automatically imported by both `refresh_openapi.py` and `query_spec.py` to:
+
+- Choose the cache location for the operating system.
+- Honor an explicit file path or the `MIST_OPENAPI_PATH` environment variable.
+- Prevent the downloaded specification from being stored inside the installed skill.
+- Enforce the file-size limit and validate that the file is a Mist OpenAPI 3.x document.
+
+#### `scripts/query_spec.py`
+
+This script is engaged after a valid specification is available. It retrieves a small, relevant section instead of loading the entire document.
+
+The usual command flow is:
+
+1. `info` confirms the specification version, available servers, and authentication schemes.
+2. `find TERM` searches for possible endpoints when the exact path is unknown.
+3. `show METHOD PATH` displays a concise view of one endpoint, including parameters, security, request body, and responses.
+4. `operation METHOD PATH` is used when expanded request or response schemas are needed.
+5. `schema NAME` is used to inspect a reusable data model. Add `--property FIELD` when only one field is needed.
+6. `tags` or `tag NAME` is used to browse groups of related endpoints.
+
+Example:
+
+```bash
+python scripts/refresh_openapi.py --offline
+python scripts/query_spec.py find wlans
+python scripts/query_spec.py show GET "/api/v1/orgs/{org_id}/wlans"
+python scripts/query_spec.py operation GET "/api/v1/orgs/{org_id}/wlans" --max-depth 1
+```
+
+Output is deliberately bounded with `--limit`, `--max-depth`, and `--max-chars`. This keeps searches focused and prevents the full API specification from being placed into the assistant's context.
+
+### When the example scripts are engaged
+
+The assistant reads the closest matching example before creating REST code. These examples connect to a Mist tenant only when a user deliberately runs them with the required credentials and arguments.
+
+- `examples/mist_client.py` is the shared API client used by the REST examples. It handles token attachment, approved HTTPS hosts, timeouts, bounded retries, pagination, and safe errors. It is imported by other examples rather than normally run by itself.
+- `examples/list_sites.py` is used as the starting pattern for listing every site in an organization.
+- `examples/get_site_devices_to_csv.py` is used for resolving a site and exporting its device statistics to CSV.
+- `examples/update_wlan_stub.py` is used for previewing, applying, verifying, or rolling back one WLAN SSID change. It remains read-only unless `--apply` and the matching confirmation target are supplied.
+- `examples/webhook_receiver.py` is used when testing inbound Mist webhook delivery and signature validation on a local machine.
+
+Reference files are loaded only when their topic applies: implementation patterns for REST code, safety guidance for writes, event integration guidance for webhooks or WebSockets, and Terraform guidance for declarative workflows.
+
+## Before first use
+
+You need an Agent Skills-compatible coding assistant and Python 3.10 or newer. The REST examples also use the Python `requests` package.
+
+Install the example requirements:
+
+```bash
+python -m pip install -r examples/requirements.txt
+```
+
+Commands in this README use `python`. If that command is unavailable, try `python3` or `py -3`.
+
+### Install the skill
+
+Copy or clone this directory as `mist-api` inside the skills folder used by your assistant. For a personal Claude Code skill:
+
+```bash
+mkdir -p ~/.claude/skills
+cp -R mist-api ~/.claude/skills/mist-api
+```
+
+For a project-only Claude Code skill, use `.claude/skills/mist-api`. Other Agent Skills-compatible assistants use their corresponding skill directory.
+
+### Download the API reference manual
+
+The large Juniper OpenAPI specification is not included in this project. Download it into your local user cache:
+
+```bash
+python scripts/refresh_openapi.py
+```
+
+This downloads API documentation only; it does not configure your Mist tenant.
+
+Later, you can check which cached version is available without downloading or changing anything:
+
+```bash
+python scripts/refresh_openapi.py --offline
+```
+
+Automation and test environments can choose a different cache file with `MIST_OPENAPI_PATH`. Use of downloaded Juniper material is subject to Juniper's applicable terms; see [NOTICE](NOTICE).
+
+## Safety rules built into the skill
+
+- API tokens should come from environment variables, never hardcoded files or chat output.
+- Read-only discovery comes before configuration changes.
+- Exact endpoints and fields are verified instead of guessed.
+- Large result sets use pagination so records are not silently missed.
+- Requests use timeouts and limited retries instead of retrying forever.
+- Writes use the smallest necessary payload and a clearly bounded target list.
+- Current state is checked again before a change to reduce the chance of overwriting someone else's work.
+- Live writes and deletes require explicit, last-minute confirmation.
+- The result is read back and compared with the requested outcome.
+
+## Folder map
+
+```text
+mist-api/
+  SKILL.md                 Main instructions and workflow for the assistant
+  agents/openai.yaml       Skill information for compatible assistants
+  scripts/                 OpenAPI download and lookup utilities
+  references/              Detailed procedures and troubleshooting notes
+  examples/                Reusable Python examples
+  tests/                   Automated checks for this project
+  LICENSE
+  NOTICE
+```
+
+## Maintainer checks
+
+These commands are for developers maintaining this skill; a normal user does not need to run them.
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+ruff check .
+ruff format --check .
+bandit -q -r scripts examples
+python path/to/skill-creator/scripts/quick_validate.py .
+```
+
+The final validation command depends on where the Agent Skills validation utility is installed.
+
+## License
+
+Authored project files are available under the [MIT License](LICENSE). Juniper content is not included under that license.

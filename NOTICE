@@ -1,0 +1,17 @@
+Mist API Agent Skill
+Copyright (c) 2026 Joshua A. Gardiner
+
+This is an independent, unofficial project. It is not affiliated with,
+endorsed by, or sponsored by Juniper Networks, Inc.
+
+No Juniper OpenAPI export or other Juniper documentation is distributed with
+this project. The optional refresh utility retrieves the Mist OpenAPI export
+from Juniper's official documentation site into the current user's cache.
+Downloaded material remains subject to Juniper's applicable terms and is not
+licensed under this project's MIT License.
+
+Official export source:
+https://www.juniper.net/documentation/us/en/software/mist/api/static/exports/mist-api-openapi31json.json
+
+Juniper Networks, Juniper, Mist, and related names and marks are trademarks or
+registered trademarks of their respective owners.
