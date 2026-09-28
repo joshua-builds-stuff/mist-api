@@ -124,11 +124,10 @@ def atomic_write_private_json(path: Path, value: dict[str, Any]) -> None:
         dir=parent,
         prefix=f".{path.name}.",
         suffix=".tmp",
-        text=True,
     )
     try:
         os.chmod(temporary_name, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
             json.dump(value, handle, indent=2, sort_keys=True)
             handle.write("\n")
             handle.flush()
