@@ -208,6 +208,15 @@ def apply_ssid_change(
             "Write blocked: WLAN changed after the initial read; start over"
         )
 
+    if rollback_file is not None and not rollback_file.parent.is_dir():
+        raise ValueError(f"Rollback directory does not exist: {rollback_file.parent}")
+
+    # MistClient retries GET/HEAD/OPTIONS only by default, so this PUT is one
+    # deliberate attempt.  Never replace this body with the complete GET object.
+    client.request_json("PUT", path, json_body={"ssid": desired_ssid})
+
+    # Publish the record only after the PUT succeeds so a rejected write keeps
+    # the previous, still-valid rollback record.
     if rollback_file is not None:
         record = create_rollback_record(
             client,
@@ -216,12 +225,14 @@ def apply_ssid_change(
             current_ssid,
             desired_ssid,
         )
-        atomic_write_private_json(rollback_file, record)
+        try:
+            atomic_write_private_json(rollback_file, record)
+        except (OSError, ValueError) as exc:
+            raise WlanUpdateError(
+                "SSID was updated but the rollback record could not be saved; "
+                "the previous SSID is shown in the preview above"
+            ) from exc
         logger.info("Saved minimal rollback record to %s", rollback_file)
-
-    # MistClient retries GET/HEAD/OPTIONS only by default, so this PUT is one
-    # deliberate attempt.  Never replace this body with the complete GET object.
-    client.request_json("PUT", path, json_body={"ssid": desired_ssid})
 
     verified = read_wlan(client, path)
     if verified["ssid"] != desired_ssid:
