@@ -242,6 +242,28 @@ def test_csv_formula_injection_is_neutralized_and_type_status_are_exported(
     assert list(tmp_path.glob(".devices.csv.*.tmp")) == []
 
 
+def test_atomic_writers_use_binary_mkstemp_so_windows_does_not_double_crlf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_mkstemp = device_export.tempfile.mkstemp
+    text_modes: list[Any] = []
+
+    def recording_mkstemp(*args: Any, **kwargs: Any) -> tuple[int, str]:
+        text_modes.append(kwargs.get("text", False))
+        return real_mkstemp(*args, **kwargs)
+
+    monkeypatch.setattr(device_export.tempfile, "mkstemp", recording_mkstemp)
+    output = tmp_path / "devices.csv"
+    device_export.atomic_write_csv(output, [{"name": "a"}, {"name": "b"}], "site")
+    wlan_update.atomic_write_private_json(tmp_path / "rollback.json", {"a": 1})
+
+    assert text_modes == [False, False]
+    data = output.read_bytes()
+    assert b"\r\r\n" not in data
+    assert data.count(b"\r\n") == 3
+    assert b"\r" not in (tmp_path / "rollback.json").read_bytes()
+
+
 def test_atomic_csv_preserves_existing_file_if_iteration_fails(tmp_path: Path) -> None:
     output = tmp_path / "devices.csv"
     output.write_text("old-content\n", encoding="utf-8")

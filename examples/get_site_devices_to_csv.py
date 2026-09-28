@@ -90,7 +90,6 @@ def atomic_write_csv(
         dir=parent,
         prefix=f".{destination.name}.",
         suffix=".tmp",
-        text=True,
     )
     count = 0
     try:
