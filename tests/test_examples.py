@@ -507,7 +507,7 @@ class AmbiguousPutWlanClient(FakeWlanClient):
     [
         "Mist API PUT response was not valid JSON",
         "Mist API PUT request failed: ChunkedEncodingError",
-        "Mist API PUT request failed with HTTP 500",
+        "Mist API PUT request failed after 1 attempt(s): ConnectionError",
     ],
 )
 def test_ambiguous_put_failure_saves_rollback_when_get_confirms(
@@ -560,6 +560,32 @@ def test_ambiguous_put_failure_keeps_previous_rollback_when_ssid_unchanged(
         )
 
     assert json.loads(rollback.read_text(encoding="utf-8")) == previous
+
+
+def test_http_error_put_keeps_previous_rollback_without_verify_get(
+    tmp_path: Path,
+) -> None:
+    rollback = tmp_path / "rollback.json"
+    previous = {"before_ssid": "Original", "applied_ssid": "Old"}
+    rollback.write_text(json.dumps(previous), encoding="utf-8")
+    client = AmbiguousPutWlanClient(
+        [{"ssid": "Old"}, {"ssid": "Old"}],
+        "Mist API PUT request failed with HTTP 500",
+    )
+
+    with pytest.raises(MistAPIError, match="HTTP 500"):
+        wlan_update.apply_ssid_change(
+            client,  # type: ignore[arg-type]
+            site_id="site",
+            wlan_id="wlan",
+            desired_ssid="New",
+            apply=True,
+            confirmation="site/wlan",
+            rollback_file=rollback,
+        )
+
+    assert json.loads(rollback.read_text(encoding="utf-8")) == previous
+    assert [call[0] for call in client.calls] == ["GET", "GET", "PUT"]
 
 
 def test_wlan_timeout_keeps_previous_rollback_when_ssid_unchanged(
