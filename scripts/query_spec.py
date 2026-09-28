@@ -38,6 +38,8 @@ DEFAULT_LIMIT = 20
 DEFAULT_MAX_CHARS = 6_000
 MIN_MAX_CHARS = 500
 MAX_MAX_CHARS = 50_000
+MAX_REF_SUMMARY_DEPTH = 4
+MAX_REF_SUMMARY_BRANCHES = 5
 
 _SENSITIVE_NAME = re.compile(
     r"(?:^|[_-])(?:api[_-]?key|authorization|community|cookie|credential|passphrase|"
@@ -293,8 +295,10 @@ def cmd_show(spec: dict[str, Any], args: argparse.Namespace) -> CommandOutput:
             schema = (
                 media.get("schema") if isinstance(media.get("schema"), dict) else {}
             )
-            ref = _ref_name(schema.get("$ref", ""))
-            lines.append(f"  {content_type} -> schema: {ref or _schema_label(schema)}")
+            named = _schema_ref_summary(schema)
+            lines.append(
+                f"  {content_type} -> schema: {named or _schema_label(schema)}"
+            )
 
     responses = operation.get("responses")
     if isinstance(responses, dict) and responses:
@@ -311,7 +315,7 @@ def cmd_show(spec: dict[str, Any], args: argparse.Namespace) -> CommandOutput:
                     if isinstance(media, dict) and isinstance(
                         media.get("schema"), dict
                     ):
-                        schema_ref = _ref_name(media["schema"].get("$ref", ""))
+                        schema_ref = _schema_ref_summary(media["schema"])
                         break
             suffix = f"  -> {schema_ref}" if schema_ref else ""
             lines.append(f"  {code}: {description}{suffix}")
@@ -862,6 +866,35 @@ def _get_operation(
             f"{method.upper()} not defined on {path}. Available: {available or 'none'}"
         )
     return path, path_item, _resolve_object_ref(spec, raw_operation)
+
+
+def _schema_ref_summary(schema: Any, depth: int = 0) -> str:
+    """Name the component schemas behind a ref, composition, or array."""
+    if not isinstance(schema, dict) or depth > MAX_REF_SUMMARY_DEPTH:
+        return ""
+    ref = schema.get("$ref")
+    if isinstance(ref, str) and ref:
+        return _ref_name(ref)
+    for keyword in ("allOf", "anyOf", "oneOf"):
+        branches = schema.get(keyword)
+        if not isinstance(branches, list):
+            continue
+        names = [
+            name
+            for name in (_schema_ref_summary(branch, depth + 1) for branch in branches)
+            if name
+        ]
+        if names:
+            shown = names[:MAX_REF_SUMMARY_BRANCHES]
+            more = len(names) - len(shown)
+            extra = f", +{more} more" if more else ""
+            return f"{keyword}[{', '.join(shown)}{extra}]"
+    items = schema.get("items")
+    if isinstance(items, dict):
+        item_name = _schema_ref_summary(items, depth + 1)
+        if item_name:
+            return f"array[{item_name}]"
+    return ""
 
 
 def _schema_label(schema: dict[str, Any]) -> str:

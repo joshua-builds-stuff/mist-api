@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
@@ -206,6 +207,66 @@ class QuerySpecCliTests(unittest.TestCase):
 
         find_result = self.run_cli("find", "widgets")
         self.assertIn("[DEPRECATED]", find_result.stdout)
+
+    def test_show_names_schemas_inside_composition_and_array_items(self) -> None:
+        spec = {
+            "openapi": "3.1.0",
+            "components": {"schemas": {"wlan": {}, "site": {}, "a": {}, "b": {}}},
+            "paths": {
+                "/wlans/{id}": {
+                    "put": {
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "allOf": [
+                                            {"$ref": "#/components/schemas/wlan"},
+                                            {"description": "Request Body"},
+                                        ]
+                                    }
+                                }
+                            }
+                        },
+                        "responses": {
+                            "200": {
+                                "description": "OK",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/site"
+                                            },
+                                        }
+                                    }
+                                },
+                            },
+                            "201": {
+                                "description": "Either",
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "oneOf": [
+                                                {"$ref": "#/components/schemas/a"},
+                                                {"$ref": "#/components/schemas/b"},
+                                            ]
+                                        }
+                                    }
+                                },
+                            },
+                            "204": {"description": "Empty"},
+                        },
+                    }
+                }
+            },
+        }
+        args = argparse.Namespace(method="put", path="/wlans/{id}")
+        text = query_spec.cmd_show(spec, args).value
+
+        self.assertIn("application/json -> schema: allOf[wlan]", text)
+        self.assertIn("200: OK  -> array[site]", text)
+        self.assertIn("201: Either  -> oneOf[a, b]", text)
+        self.assertIn("  204: Empty\n", text + "\n")
 
     def test_pointer_escaping_ref_siblings_and_schema_semantics_survive(self) -> None:
         result = self.run_cli("schema", "EscapedRef", "--max-depth", "2")
