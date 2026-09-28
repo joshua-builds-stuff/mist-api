@@ -46,7 +46,37 @@ python scripts/query_spec.py tags
 python scripts/query_spec.py tag "Sites Devices"
 ```
 
-Use `find` before increasing limits. Prefer `schema --property` when only one field is material. Keep `--max-depth` and `--max-chars` at their defaults unless necessary. Truncated commands return explicit truncation metadata rather than malformed JSON. When JSON output exceeds `--max-chars`, long descriptions are shortened first, then nested schemas collapse to one-line labels (for example `"ssid": "string"` or `"acct_servers": "array[radius_acct_server]"`), and finally trailing entries are replaced by an `x-query-omitted` count. Use `schema --property` or a larger `--max-chars` to see a collapsed field in full.
+Use `find` before increasing limits. Prefer `schema --property` when only one field is material. Keep `--max-depth` and `--max-chars` at their defaults unless necessary.
+
+### Schema names in `show`
+
+`show` prints a schema label for every request-body content type. A response line gains the same kind of label from the first response content entry that has a schema object.
+
+A direct `$ref` is the component name. The lookup also walks `allOf`, `anyOf`, and `oneOf` branches and array `items`, a few levels deep. Composition is written as `allOf[wlan]` or `oneOf[a, b]`. An array of a named schema is written as `array[site]`. Each composition keyword lists at most five names. Further names are a suffix inside the brackets, as in `oneOf[a, b, c, d, e, +2 more]`.
+
+```text
+requestBody:
+  application/json -> schema: allOf[wlan]
+
+responses:
+  200: OK  -> array[site]
+  201: Either  -> oneOf[a, b]
+  204: Empty
+```
+
+A request body with no named component falls back to the schema `type`, or to `inline schema`. A response with no named component keeps only its status and description. Pass the printed name to `schema` when the fields matter. `show` does not expand properties.
+
+### Oversized `schema` and `operation` JSON
+
+`schema` and `operation` print JSON wrapped in `_meta` and `data`. `info`, `find`, `show`, `tags`, and `tag` print text. Text that exceeds `--max-chars` is cut with `... [output truncated at N characters]`.
+
+JSON that exceeds `--max-chars` stays valid JSON. `_meta.truncated` is true and `_meta.reasons` includes `output-character-budget`. The helper shortens the document in this order:
+
+1. Long free-text strings are shortened. `$ref`, `format`, `type`, and `x-expanded-from` are left intact.
+2. Nested schemas collapse to one-line labels, deepest first. Examples: `"ssid": "string"`, `"ap_ids": "array[string]|null"`, `"acct_servers": "array[radius_acct_server]"`, and a component name such as `"airwatch": "wlan_airwatch"`. One `allOf` branch keeps that branch's label. Several branches become `allOf[a, b, c]`, with at most three names and then `…`.
+3. Trailing entries of the outermost schema are removed and replaced by an `x-query-omitted` count. Earlier property names remain, including a collapsed label such as `"field_000": "string"`.
+
+`data` stays a trimmed schema or operation through those steps. It becomes `{"x-query-truncated": "output-character-budget"}` only when the shortened document still cannot fit. `--max-chars` accepts 500 through 50000 and defaults to 6000. Use `schema --property` or a larger `--max-chars` to read a collapsed field in full.
 
 ## Path construction
 

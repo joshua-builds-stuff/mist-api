@@ -65,9 +65,9 @@ The usual command flow is:
 
 1. `info` confirms the specification version, available servers, and authentication schemes.
 2. `find TERM` searches for possible endpoints when the exact path is unknown.
-3. `show METHOD PATH` displays a concise view of one endpoint, including parameters, security, request body, and responses.
+3. `show METHOD PATH` displays a concise view of one endpoint, including parameters, security, request body, and responses. Request and response schemas are named even when the component sits inside `allOf`, `anyOf`, `oneOf`, or an array's `items`.
 4. `operation METHOD PATH` is used when expanded request or response schemas are needed.
-5. `schema NAME` is used to inspect a reusable data model. Add `--property FIELD` when only one field is needed.
+5. `schema NAME` is used to inspect a reusable data model. Add `--property FIELD` when only one field is needed. The name printed by `show` is the usual argument.
 6. `tags` or `tag NAME` is used to browse groups of related endpoints.
 
 Example:
@@ -79,16 +79,16 @@ python scripts/query_spec.py show GET "/api/v1/orgs/{org_id}/wlans"
 python scripts/query_spec.py operation GET "/api/v1/orgs/{org_id}/wlans" --max-depth 1
 ```
 
-Output is deliberately bounded with `--limit`, `--max-depth`, and `--max-chars`. This keeps searches focused and prevents the full API specification from being placed into the assistant's context.
+Output is deliberately bounded with `--limit`, `--max-depth`, and `--max-chars`. This keeps searches focused and prevents the full API specification from being placed into the assistant's context. When `schema` or `operation` JSON exceeds `--max-chars`, long text is shortened, nested schemas collapse to one-line labels, and trailing fields become an `x-query-omitted` count. The root schema remains visible through that trimming. [references/openapi.md](references/openapi.md) describes the `show` labels and the trim order.
 
 ### When the example scripts are engaged
 
 The assistant reads the closest matching example before creating REST code. These examples connect to a Mist tenant only when a user deliberately runs them with the required credentials and arguments.
 
-- `examples/mist_client.py` is the shared API client used by the REST examples. It handles token attachment, approved HTTPS hosts, timeouts, bounded retries, pagination, and safe errors. It is imported by other examples rather than normally run by itself.
+- `examples/mist_client.py` is the shared API client used by the REST examples. It handles token attachment, approved HTTPS hosts, timeouts, bounded retries, pagination, and safe errors. It is imported by other examples rather than normally run by itself. `paginate` stops on a short or empty page. When the last page allowed by `max_pages` is full, it reads one more page and accepts the result when that page is empty.
 - `examples/list_sites.py` is used as the starting pattern for listing every site in an organization.
 - `examples/get_site_devices_to_csv.py` is used for resolving a site and exporting its device statistics to CSV.
-- `examples/update_wlan_stub.py` is used for previewing, applying, verifying, or rolling back one WLAN SSID change. It remains read-only unless `--apply` and the matching confirmation target are supplied.
+- `examples/update_wlan_stub.py` is used for previewing, applying, verifying, or rolling back one WLAN SSID change. It remains read-only unless `--apply` and the matching confirmation target are supplied. A successful apply replaces the rollback file only after a follow-up read shows the new SSID, or after a successful PUT whose verification read cannot be completed. A rejected PUT leaves the previous rollback file unchanged. The file format and failure cases are in [references/safety-and-troubleshooting.md](references/safety-and-troubleshooting.md).
 - `examples/webhook_receiver.py` is used when testing inbound Mist webhook delivery and signature validation on a local machine.
 
 Reference files are loaded only when their topic applies: implementation patterns for REST code, safety guidance for writes, event integration guidance for webhooks or WebSockets, and Terraform guidance for declarative workflows.
@@ -151,6 +151,7 @@ Automation and test environments can choose a different cache file with `MIST_OP
 ```text
 mist-api/
   SKILL.md                 Main instructions and workflow for the assistant
+  CHANGELOG.md             User-facing documentation revisions
   agents/openai.yaml       Skill information for compatible assistants
   scripts/                 OpenAPI download and lookup utilities
   references/              Detailed procedures and troubleshooting notes
@@ -174,6 +175,10 @@ python path/to/skill-creator/scripts/quick_validate.py .
 ```
 
 The final validation command depends on where the Agent Skills validation utility is installed.
+
+`ruff check` uses the rule set pinned in `ruff.toml` (`E4`, `E7`, `E9`, `F`, and `B`). A local run from this directory matches CI as Ruff's default rules change. No extra install step is required.
+
+User-facing documentation changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
