@@ -67,6 +67,43 @@ def expected_confirmation(site_id: str, wlan_id: str) -> str:
     return f"{site_id}/{wlan_id}"
 
 
+def _put_outcome_is_indeterminate(exc: MistAPIError) -> bool:
+    """True when the PUT may have been applied despite the client error.
+
+    HTTP 4xx/5xx (``failed with HTTP N``) are completed rejections. Timeouts,
+    connection errors, chunked-encoding failures, other request exceptions,
+    and a 2xx body that was not valid JSON are indeterminate: read the WLAN
+    back before keeping or replacing the rollback record.
+    """
+
+    return "failed with HTTP " not in str(exc)
+
+
+def _publish_rollback_record(
+    client: MistClient,
+    rollback_file: Path,
+    site_id: str,
+    wlan_id: str,
+    before_ssid: str,
+    applied_ssid: str,
+) -> None:
+    record = create_rollback_record(
+        client,
+        site_id,
+        wlan_id,
+        before_ssid,
+        applied_ssid,
+    )
+    try:
+        atomic_write_private_json(rollback_file, record)
+    except (OSError, ValueError) as exc:
+        raise WlanUpdateError(
+            "SSID was updated but the rollback record could not be saved; "
+            "the previous SSID is shown in the preview above"
+        ) from exc
+    logger.info("Saved minimal rollback record to %s", rollback_file)
+
+
 def require_target_confirmation(
     confirmation: str | None, site_id: str, wlan_id: str
 ) -> None:
@@ -209,25 +246,62 @@ def apply_ssid_change(
         )
 
     if rollback_file is not None:
-        record = create_rollback_record(
+        if rollback_file.exists() and rollback_file.is_dir():
+            raise ValueError(f"Rollback path is a directory: {rollback_file}")
+        if not rollback_file.parent.is_dir():
+            raise ValueError(
+                f"Rollback directory does not exist: {rollback_file.parent}"
+            )
+
+    # MistClient retries GET/HEAD/OPTIONS only by default, so this PUT is one
+    # deliberate attempt.  Never replace this body with the complete GET object.
+    put_error: MistAPIError | None = None
+    try:
+        client.request_json("PUT", path, json_body={"ssid": desired_ssid})
+    except MistAPIError as exc:
+        if not _put_outcome_is_indeterminate(exc):
+            raise
+        put_error = exc
+
+    try:
+        verified = read_wlan(client, path)
+    except (MistAPIError, WlanUpdateError) as verify_exc:
+        if put_error is not None:
+            raise put_error from None
+        # PUT returned success; the follow-up GET timed out or failed.
+        if rollback_file is not None:
+            _publish_rollback_record(
+                client,
+                rollback_file,
+                site_id,
+                wlan_id,
+                current_ssid,
+                desired_ssid,
+            )
+        raise WlanUpdateError(
+            "SSID was updated but verification could not be completed; "
+            "the previous SSID is shown in the preview above"
+        ) from verify_exc
+
+    if verified["ssid"] != desired_ssid:
+        if put_error is not None:
+            raise put_error
+        raise WlanUpdateError(
+            "Verification failed: WLAN SSID does not match the requested value"
+        )
+
+    # Publish only after GET confirms the desired SSID so a successful HTTP
+    # response that did not apply cannot replace a still-valid previous record.
+    if rollback_file is not None:
+        _publish_rollback_record(
             client,
+            rollback_file,
             site_id,
             wlan_id,
             current_ssid,
             desired_ssid,
         )
-        atomic_write_private_json(rollback_file, record)
-        logger.info("Saved minimal rollback record to %s", rollback_file)
 
-    # MistClient retries GET/HEAD/OPTIONS only by default, so this PUT is one
-    # deliberate attempt.  Never replace this body with the complete GET object.
-    client.request_json("PUT", path, json_body={"ssid": desired_ssid})
-
-    verified = read_wlan(client, path)
-    if verified["ssid"] != desired_ssid:
-        raise WlanUpdateError(
-            "Verification failed: WLAN SSID does not match the requested value"
-        )
     print("Update verified.")
     return True
 
