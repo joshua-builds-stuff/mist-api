@@ -74,6 +74,31 @@ def _put_outcome_is_indeterminate(exc: MistAPIError) -> bool:
     return "Timeout" in text or "ConnectionError" in text
 
 
+def _publish_rollback_record(
+    client: MistClient,
+    rollback_file: Path,
+    site_id: str,
+    wlan_id: str,
+    before_ssid: str,
+    applied_ssid: str,
+) -> None:
+    record = create_rollback_record(
+        client,
+        site_id,
+        wlan_id,
+        before_ssid,
+        applied_ssid,
+    )
+    try:
+        atomic_write_private_json(rollback_file, record)
+    except (OSError, ValueError) as exc:
+        raise WlanUpdateError(
+            "SSID was updated but the rollback record could not be saved; "
+            "the previous SSID is shown in the preview above"
+        ) from exc
+    logger.info("Saved minimal rollback record to %s", rollback_file)
+
+
 def require_target_confirmation(
     confirmation: str | None, site_id: str, wlan_id: str
 ) -> None:
@@ -235,10 +260,23 @@ def apply_ssid_change(
 
     try:
         verified = read_wlan(client, path)
-    except (MistAPIError, WlanUpdateError):
+    except (MistAPIError, WlanUpdateError) as verify_exc:
         if put_error is not None:
             raise put_error from None
-        raise
+        # PUT returned success; the follow-up GET timed out or failed.
+        if rollback_file is not None:
+            _publish_rollback_record(
+                client,
+                rollback_file,
+                site_id,
+                wlan_id,
+                current_ssid,
+                desired_ssid,
+            )
+        raise WlanUpdateError(
+            "SSID was updated but verification could not be completed; "
+            "the previous SSID is shown in the preview above"
+        ) from verify_exc
 
     if verified["ssid"] != desired_ssid:
         if put_error is not None:
@@ -248,24 +286,16 @@ def apply_ssid_change(
         )
 
     # Publish only after GET confirms the desired SSID so a successful HTTP
-    # response that did not apply, or a timeout after apply, cannot replace a
-    # still-valid previous record with a lie.
+    # response that did not apply cannot replace a still-valid previous record.
     if rollback_file is not None:
-        record = create_rollback_record(
+        _publish_rollback_record(
             client,
+            rollback_file,
             site_id,
             wlan_id,
             current_ssid,
             desired_ssid,
         )
-        try:
-            atomic_write_private_json(rollback_file, record)
-        except (OSError, ValueError) as exc:
-            raise WlanUpdateError(
-                "SSID was updated but the rollback record could not be saved; "
-                "the previous SSID is shown in the preview above"
-            ) from exc
-        logger.info("Saved minimal rollback record to %s", rollback_file)
 
     print("Update verified.")
     return True
