@@ -199,6 +199,31 @@ def test_pagination_requests_every_page_without_mutating_params() -> None:
     assert session.calls[1][1]["params"] == {"type": "ap", "limit": 2, "page": 2}
 
 
+def test_pagination_accepts_exact_full_final_page_at_safety_limit() -> None:
+    session = DummySession(
+        [DummyResponse(200, [{"id": "1"}, {"id": "2"}]), DummyResponse(200, [])]
+    )
+    client = MistClient("token", session=session)
+
+    items = list(client.paginate("/sites", page_size=2, max_pages=1))
+
+    assert [item["id"] for item in items] == ["1", "2"]
+    assert session.calls[1][1]["params"] == {"limit": 2, "page": 2}
+
+
+def test_pagination_limit_raises_when_probe_page_has_more_data() -> None:
+    session = DummySession(
+        [DummyResponse(200, [{"id": "1"}, {"id": "2"}]), DummyResponse(200, [{}])]
+    )
+    client = MistClient("token", session=session)
+    yielded: list[dict[str, Any]] = []
+
+    with pytest.raises(MistAPIError, match="1-page safety limit"):
+        for item in client.paginate("/sites", page_size=2, max_pages=1):
+            yielded.append(item)
+    assert [item["id"] for item in yielded] == ["1", "2"]
+
+
 class PaginatingSiteClient:
     def __init__(self, sites: list[dict[str, Any]]) -> None:
         self.sites = sites
