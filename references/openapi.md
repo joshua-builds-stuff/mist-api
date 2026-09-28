@@ -46,7 +46,7 @@ python scripts/query_spec.py tags
 python scripts/query_spec.py tag "Sites Devices"
 ```
 
-Use `find` before increasing limits. Prefer `schema --property` when only one field is material. Keep `--max-depth` and `--max-chars` at their defaults unless necessary. Truncated commands return explicit truncation metadata rather than malformed JSON.
+Use `find` before increasing limits. Prefer `schema --property` when only one field is material. Keep `--max-depth` and `--max-chars` at their defaults unless necessary. Truncated commands return explicit truncation metadata rather than malformed JSON. When JSON output exceeds `--max-chars`, long descriptions are shortened first, then nested schemas collapse to one-line labels (for example `"ssid": "string"` or `"acct_servers": "array[radius_acct_server]"`), and finally trailing entries are replaced by an `x-query-omitted` count. Use `schema --property` or a larger `--max-chars` to see a collapsed field in full.
 
 ## Path construction
 
