@@ -331,6 +331,13 @@ class MistClient:
             if len(payload) < page_size:
                 return
 
+        # A full final page is only an overflow if another page has data.
+        probe_params = {**base_params, "limit": page_size, "page": max_pages + 1}
+        probe = self.request_json("GET", path, params=probe_params)
+        if not isinstance(probe, list):
+            raise MistAPIError("Mist API paginated response was not a JSON array")
+        if not probe:
+            return
         raise MistAPIError(
             f"Mist API pagination exceeded the {max_pages}-page safety limit"
         )
