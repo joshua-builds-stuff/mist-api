@@ -67,6 +67,13 @@ def expected_confirmation(site_id: str, wlan_id: str) -> str:
     return f"{site_id}/{wlan_id}"
 
 
+def _put_outcome_is_indeterminate(exc: MistAPIError) -> bool:
+    """True when the PUT may have been applied despite the client error."""
+
+    text = str(exc)
+    return "Timeout" in text or "ConnectionError" in text
+
+
 def require_target_confirmation(
     confirmation: str | None, site_id: str, wlan_id: str
 ) -> None:
@@ -208,15 +215,41 @@ def apply_ssid_change(
             "Write blocked: WLAN changed after the initial read; start over"
         )
 
-    if rollback_file is not None and not rollback_file.parent.is_dir():
-        raise ValueError(f"Rollback directory does not exist: {rollback_file.parent}")
+    if rollback_file is not None:
+        if rollback_file.exists() and rollback_file.is_dir():
+            raise ValueError(f"Rollback path is a directory: {rollback_file}")
+        if not rollback_file.parent.is_dir():
+            raise ValueError(
+                f"Rollback directory does not exist: {rollback_file.parent}"
+            )
 
     # MistClient retries GET/HEAD/OPTIONS only by default, so this PUT is one
     # deliberate attempt.  Never replace this body with the complete GET object.
-    client.request_json("PUT", path, json_body={"ssid": desired_ssid})
+    put_error: MistAPIError | None = None
+    try:
+        client.request_json("PUT", path, json_body={"ssid": desired_ssid})
+    except MistAPIError as exc:
+        if not _put_outcome_is_indeterminate(exc):
+            raise
+        put_error = exc
 
-    # Publish the record only after the PUT succeeds so a rejected write keeps
-    # the previous, still-valid rollback record.
+    try:
+        verified = read_wlan(client, path)
+    except (MistAPIError, WlanUpdateError):
+        if put_error is not None:
+            raise put_error from None
+        raise
+
+    if verified["ssid"] != desired_ssid:
+        if put_error is not None:
+            raise put_error
+        raise WlanUpdateError(
+            "Verification failed: WLAN SSID does not match the requested value"
+        )
+
+    # Publish only after GET confirms the desired SSID so a successful HTTP
+    # response that did not apply, or a timeout after apply, cannot replace a
+    # still-valid previous record with a lie.
     if rollback_file is not None:
         record = create_rollback_record(
             client,
@@ -234,11 +267,6 @@ def apply_ssid_change(
             ) from exc
         logger.info("Saved minimal rollback record to %s", rollback_file)
 
-    verified = read_wlan(client, path)
-    if verified["ssid"] != desired_ssid:
-        raise WlanUpdateError(
-            "Verification failed: WLAN SSID does not match the requested value"
-        )
     print("Update verified.")
     return True
 

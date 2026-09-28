@@ -357,6 +357,110 @@ def test_wlan_update_blocks_missing_rollback_directory_before_put(
     assert all(call[0] != "PUT" for call in client.calls)
 
 
+def test_wlan_update_blocks_directory_rollback_target_before_put(
+    tmp_path: Path,
+) -> None:
+    client = FakeWlanClient([{"ssid": "Old"}, {"ssid": "Old"}])
+    rollback_dir = tmp_path / "rollback.json"
+    rollback_dir.mkdir()
+    with pytest.raises(ValueError, match="Rollback path is a directory"):
+        wlan_update.apply_ssid_change(
+            client,  # type: ignore[arg-type]
+            site_id="site",
+            wlan_id="wlan",
+            desired_ssid="New",
+            apply=True,
+            confirmation="site/wlan",
+            rollback_file=rollback_dir,
+        )
+    assert all(call[0] != "PUT" for call in client.calls)
+
+
+def test_wlan_update_keeps_previous_rollback_when_verify_ssid_unchanged(
+    tmp_path: Path,
+) -> None:
+    rollback = tmp_path / "rollback.json"
+    previous = {"before_ssid": "Original", "applied_ssid": "Old"}
+    rollback.write_text(json.dumps(previous), encoding="utf-8")
+    client = FakeWlanClient([{"ssid": "Old"}, {"ssid": "Old"}, {"ssid": "Old"}])
+
+    with pytest.raises(wlan_update.WlanUpdateError, match="Verification failed"):
+        wlan_update.apply_ssid_change(
+            client,  # type: ignore[arg-type]
+            site_id="site",
+            wlan_id="wlan",
+            desired_ssid="New",
+            apply=True,
+            confirmation="site/wlan",
+            rollback_file=rollback,
+        )
+
+    assert json.loads(rollback.read_text(encoding="utf-8")) == previous
+    assert any(call[0] == "PUT" for call in client.calls)
+
+
+class TimeoutPutWlanClient(FakeWlanClient):
+    def request_json(
+        self,
+        method: str,
+        path: str,
+        *,
+        json_body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if method == "PUT":
+            self.calls.append((method, path, json_body))
+            raise MistAPIError(
+                "Mist API PUT request failed after 1 attempt(s): Timeout"
+            )
+        return super().request_json(method, path, json_body=json_body)
+
+
+def test_wlan_timeout_after_apply_saves_rollback_when_get_confirms(
+    tmp_path: Path,
+) -> None:
+    rollback = tmp_path / "rollback.json"
+    previous = {"before_ssid": "Original", "applied_ssid": "Old"}
+    rollback.write_text(json.dumps(previous), encoding="utf-8")
+    client = TimeoutPutWlanClient([{"ssid": "Old"}, {"ssid": "Old"}, {"ssid": "New"}])
+
+    changed = wlan_update.apply_ssid_change(
+        client,  # type: ignore[arg-type]
+        site_id="site",
+        wlan_id="wlan",
+        desired_ssid="New",
+        apply=True,
+        confirmation="site/wlan",
+        rollback_file=rollback,
+    )
+
+    assert changed
+    record = json.loads(rollback.read_text(encoding="utf-8"))
+    assert record["before_ssid"] == "Old"
+    assert record["applied_ssid"] == "New"
+
+
+def test_wlan_timeout_keeps_previous_rollback_when_ssid_unchanged(
+    tmp_path: Path,
+) -> None:
+    rollback = tmp_path / "rollback.json"
+    previous = {"before_ssid": "Original", "applied_ssid": "Old"}
+    rollback.write_text(json.dumps(previous), encoding="utf-8")
+    client = TimeoutPutWlanClient([{"ssid": "Old"}, {"ssid": "Old"}, {"ssid": "Old"}])
+
+    with pytest.raises(MistAPIError, match="Timeout"):
+        wlan_update.apply_ssid_change(
+            client,  # type: ignore[arg-type]
+            site_id="site",
+            wlan_id="wlan",
+            desired_ssid="New",
+            apply=True,
+            confirmation="site/wlan",
+            rollback_file=rollback,
+        )
+
+    assert json.loads(rollback.read_text(encoding="utf-8")) == previous
+
+
 def test_wlan_update_blocks_wrong_confirmation_before_put(tmp_path: Path) -> None:
     client = FakeWlanClient([{"ssid": "Old"}])
     with pytest.raises(wlan_update.WlanUpdateError, match="confirm-target"):
