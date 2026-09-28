@@ -27,6 +27,10 @@ Assume list operations are paginated unless the current operation proves otherwi
 
 Do not describe a result as “all” when only one page was requested.
 
+`MistClient.paginate` in `examples/mist_client.py` applies that bound for `page`/`limit` list endpoints. `page_size` must be from 1 to 100 (default 100). `max_pages` must be from 1 to 10000 (default 1000). Any caller-supplied `page` or `limit` is ignored; the client sends its own.
+
+A page shorter than `page_size` ends the walk. A completely full page on page `max_pages` is complete when the following page is empty, so the client requests page `max_pages + 1` once. An empty extra page means every record has been yielded. A non-empty extra page raises `MistAPIError` (`pagination exceeded the N-page safety limit`) after the records from the allowed pages have already been yielded. A caller that replaces its output file only after iteration finishes, including `examples/get_site_devices_to_csv.py`, therefore writes the export when the last allowed page is exactly full. When the extra page still has records, the destination file is left unchanged. The extra page uses the same GET retry rules as any other read.
+
 ## cURL
 
 Validate `MIST_BASE_URL` before running a request, then use:

@@ -59,7 +59,7 @@ python scripts/query_spec.py schema wlan --property ssid --max-depth 1 --max-cha
 python scripts/query_spec.py tag "Sites Devices"
 ```
 
-Use `find` to discover candidates, `show` for a concise operation view, and `operation` only when request or response properties are needed. When one known component field is enough, prefer `schema --property` over expanding the whole schema. Read [references/openapi.md](references/openapi.md) only for cache locations, query syntax, or path-resolution details.
+Use `find` to discover candidates, `show` for a concise operation view, and `operation` only when request or response properties are needed. `show` names component schemas inside `allOf`, `anyOf`, and `oneOf`, and names the schema used as array `items` (`allOf[wlan]`, `array[site]`). Pass that name to `schema` when the fields matter. When one known component field is enough, prefer `schema --property` over expanding the whole schema. Read [references/openapi.md](references/openapi.md) only for cache locations, query syntax, output limits, or path-resolution details.
 
 Spec paths include `/api/v1`. Request helpers default to a base URL already ending in `/api/v1`, so remove that prefix when constructing helper paths. Full spec URL = server host + spec path.
 
@@ -70,7 +70,7 @@ Spec paths include `/api/v1`. Request helpers default to a base URL already endi
 3. Verify the operation, effective authentication, deprecation state, pagination, and relevant schemas.
 4. Give the smallest practical request or implementation.
 5. Include timeouts, bounded retries, pagination, and secret-safe errors where relevant.
-6. For a proposed write, read current state, preserve minimal rollback data, show the intended change, re-check for concurrent changes, apply narrowly, and verify the exact result.
+6. For a proposed write, read current state, keep only the fields needed to undo it, show the intended change, re-check for concurrent changes, apply narrowly, and verify the exact result. Publish or replace a saved rollback record after a read-back shows the change applied, and also when the write succeeded but the verification read cannot be completed. Leave the previous record in place when a rejected write did not apply.
 7. Test one low-impact object before bulk rollout and bound the affected object set.
 
 Never perform a live tenant mutation merely because the user requested code, analysis, or a plan. Execute a live write or delete only when the user explicitly requests execution, the target and impact are clear, and confirmation is obtained immediately before the mutation.
