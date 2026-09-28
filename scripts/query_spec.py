@@ -40,6 +40,8 @@ MIN_MAX_CHARS = 500
 MAX_MAX_CHARS = 50_000
 MAX_REF_SUMMARY_DEPTH = 4
 MAX_REF_SUMMARY_BRANCHES = 5
+MAX_EXPANSION_NODES = 2_500
+MAX_EXPANSION_PROPERTIES = 1_200
 
 _SENSITIVE_NAME = re.compile(
     r"(?:^|[_-])(?:api[_-]?key|authorization|community|cookie|credential|passphrase|"
@@ -347,7 +349,7 @@ def cmd_schema(spec: dict[str, Any], args: argparse.Namespace) -> CommandOutput:
             return CommandOutput("\n".join(lines))
         name = matches[0]
 
-    budget = _expansion_budget(args.max_chars)
+    budget = _expansion_budget()
     if args.property:
         located = _find_schema_property(spec, schemas[name], args.property)
         if located is None:
@@ -379,7 +381,7 @@ def cmd_schema(spec: dict[str, Any], args: argparse.Namespace) -> CommandOutput:
 def cmd_operation(spec: dict[str, Any], args: argparse.Namespace) -> CommandOutput:
     """Emit one operation with compact, recursively expanded schemas."""
     path, path_item, operation = _get_operation(spec, args.method, args.path)
-    budget = _expansion_budget(args.max_chars)
+    budget = _expansion_budget()
     result: dict[str, Any] = {
         "method": args.method.upper(),
         "path": path,
@@ -619,10 +621,11 @@ def _find_schema_property(
     return None
 
 
-def _expansion_budget(max_chars: int) -> ExpansionBudget:
+def _expansion_budget() -> ExpansionBudget:
+    # This only bounds build work; _render_json fits the output to --max-chars.
+    # Scaling it down with --max-chars starved trailing properties entirely.
     return ExpansionBudget(
-        max_nodes=max(32, min(2_500, max_chars // 12)),
-        max_properties=max(16, min(1_200, max_chars // 20)),
+        max_nodes=MAX_EXPANSION_NODES, max_properties=MAX_EXPANSION_PROPERTIES
     )
 
 
@@ -960,13 +963,26 @@ def _render_json(
     envelope["_meta"]["truncated"] = True
     envelope["_meta"]["reasons"] = reasons
 
-    while len(render()) + 1 > max_chars:
-        candidates = _prune_candidates(envelope["data"])
-        if not candidates:
-            envelope["data"] = {"x-query-truncated": "output-character-budget"}
-            break
-        _saving, path, replacement = max(candidates, key=lambda item: item[0])
-        _replace_at_path(envelope["data"], path, replacement)
+    original = envelope["data"]
+    steps = _reduction_steps(original)
+
+    def fits(count: int) -> bool:
+        envelope["data"] = _apply_reduction_steps(original, steps[:count])
+        return len(render()) + 1 <= max_chars
+
+    # Binary search for the shortest prefix of the plan that fits. ``high``
+    # always refers to a prefix that fits, so the result is always in budget.
+    if fits(len(steps)):
+        low, high = 0, len(steps)
+        while low < high:
+            middle = (low + high) // 2
+            if fits(middle):
+                high = middle
+            else:
+                low = middle + 1
+        envelope["data"] = _apply_reduction_steps(original, steps[:high])
+    else:
+        envelope["data"] = {"x-query-truncated": "output-character-budget"}
 
     rendered = render()
     if len(rendered) + 1 > max_chars:
@@ -976,47 +992,189 @@ def _render_json(
     return rendered + "\n"
 
 
-def _prune_candidates(value: Any) -> list[tuple[int, tuple[Any, ...], Any]]:
-    candidates: list[tuple[int, tuple[Any, ...], Any]] = []
+ReductionStep = tuple[str, tuple[Any, ...], Any]
+_TRUNCATED_TEXT = "… [truncated]"
+_MIN_TRUNCATED_STRING = 40
+_KEPT_STRING_PREFIX = 24
+# Short structural fields that identify a schema; kept when a node collapses.
+_STRUCTURAL_KEYS = frozenset(("$ref", "format", "type", "x-expanded-from"))
 
-    def visit(item: Any, path: tuple[Any, ...]) -> None:
-        if isinstance(item, str) and len(item) > 20:
-            replacement = "… [truncated]"
-            saving = _json_size(item) - _json_size(replacement)
-            if saving > 0:
-                candidates.append((saving, path, replacement))
-        elif isinstance(item, dict):
-            if path and item:
-                replacement = {"x-query-truncated": "output-character-budget"}
-                saving = _json_size(item) - _json_size(replacement)
-                if saving > 0:
-                    candidates.append((saving, path, replacement))
-            for key, child in item.items():
-                visit(child, (*path, key))
+
+def _reduction_steps(value: Any) -> list[ReductionStep]:
+    """Plan output reductions from least to most destructive.
+
+    Long free-text strings are shortened first (longest first). Next, nested
+    schemas collapse to one-line labels such as ``"array[string]|null"``,
+    deepest and trailing first. Labels are computed up front because deeper
+    steps rewrite the children. Only then are trailing entries dropped from
+    the outermost schema (e.g. its last properties), so property names
+    outlive the details beneath them and the root is replaced only last.
+    """
+    strings: list[tuple[int, int, tuple[Any, ...]]] = []
+    labelled: list[tuple[int, int, tuple[Any, ...], Any]] = []
+    # Steps owned by a labelled node (or by the root, keyed ``None``).
+    owned: dict[tuple[Any, ...] | None, list[tuple[int, int, ReductionStep]]] = {}
+    order = 0
+
+    def visit(
+        item: Any,
+        path: tuple[Any, ...],
+        parent_key: Any,
+        owner: tuple[Any, ...] | None,
+        may_drop: bool,
+    ) -> None:
+        nonlocal order
+        order += 1
+        if isinstance(item, str):
+            if len(item) > _MIN_TRUNCATED_STRING and parent_key not in _STRUCTURAL_KEYS:
+                strings.append((-len(item), order, path))
+            return
+        if isinstance(item, dict):
+            children = [(key, item[key]) for key in sorted(item)]
         elif isinstance(item, list):
-            if path and item:
-                replacement = [{"x-query-truncated": "output-character-budget"}]
-                saving = _json_size(item) - _json_size(replacement)
-                if saving > 0:
-                    candidates.append((saving, path, replacement))
-            for index, child in enumerate(item):
-                visit(child, (*path, index))
+            children = list(enumerate(item))
+        else:
+            return
+        summary = _collapsed_summary(item)
+        if path and item:
+            if isinstance(summary, str):
+                labelled.append((len(path), order, path, summary))
+                # Dropping details is only worthwhile in the outermost schema;
+                # nested schemas are cheaper to collapse to their label.
+                may_drop = owner is None
+                owner = path
+            else:
+                owned.setdefault(owner, []).append(
+                    (len(path), order, ("collapse", path, summary))
+                )
+        for key, child in children:
+            child_path = (*path, key)
+            if _is_query_marker(key):
+                continue
+            if may_drop and isinstance(child, (dict, list)):
+                owned.setdefault(owner, []).append(
+                    (len(child_path), order, ("drop", child_path, None))
+                )
+            visit(child, child_path, key, owner, may_drop)
 
-    visit(value, ())
-    return candidates
+    visit(value, (), None, None, True)
+
+    def owned_steps(owner: tuple[Any, ...] | None) -> list[ReductionStep]:
+        entries = sorted(owned.get(owner, []), key=lambda e: (-e[0], -e[1]))
+        return [step for _depth, _order, step in entries]
+
+    steps: list[ReductionStep] = [
+        ("shorten", path, None) for _length, _order, path in sorted(strings)
+    ]
+    for _depth, _order, path, summary in sorted(labelled, key=lambda e: (-e[0], -e[1])):
+        steps.extend(owned_steps(path))
+        steps.append(("collapse", path, summary))
+    steps.extend(owned_steps(None))
+    return steps
+
+
+def _is_query_marker(key: Any) -> bool:
+    return isinstance(key, str) and key.startswith("x-query-")
+
+
+def _apply_reduction_steps(value: Any, steps: list[ReductionStep]) -> Any:
+    document = copy.deepcopy(value)
+    omitted: dict[tuple[Any, ...], int] = {}
+    for action, path, summary in steps:
+        parent = _container_at(document, path[:-1])
+        key = path[-1]
+        if parent is None or not _has_entry(parent, key):
+            continue
+        current = parent[key]
+        if action == "shorten":
+            if isinstance(current, str):
+                parent[key] = current[:_KEPT_STRING_PREFIX].rstrip() + _TRUNCATED_TEXT
+        elif action == "collapse":
+            if _json_size(summary) < _json_size(current):
+                parent[key] = copy.deepcopy(summary)
+                omitted.pop(path, None)
+        elif action == "drop":
+            # Drops run trailing-first, so list indices of pending steps stay valid.
+            del parent[key]
+            omitted[path[:-1]] = omitted.get(path[:-1], 0) + 1
+    for parent_path, count in omitted.items():
+        parent = _container_at(document, parent_path)
+        if isinstance(parent, list):
+            parent.append({"x-query-omitted": count})
+        elif isinstance(parent, dict):
+            parent["x-query-omitted"] = count
+    return document
+
+
+def _collapsed_summary(value: Any) -> Any:
+    label = _schema_label_text(value) if isinstance(value, dict) else ""
+    if label:
+        return label
+    if isinstance(value, dict):
+        return {"x-query-truncated": "output-character-budget"}
+    return [{"x-query-truncated": "output-character-budget"}]
+
+
+def _schema_label_text(schema: Any, depth: int = 0) -> str:
+    """Describe a schema in one line, e.g. ``array[string]|null`` or ``site``."""
+    if not isinstance(schema, dict) or depth > 3:
+        return ""
+    ref = schema.get("$ref") or schema.get("x-expanded-from")
+    ref_name = _ref_name(ref) if isinstance(ref, str) else ""
+    raw_type = schema.get("type")
+    if isinstance(raw_type, str):
+        types = [raw_type]
+    elif isinstance(raw_type, list):
+        types = [item for item in raw_type if isinstance(item, str)]
+    else:
+        types = []
+    if "array" in types:
+        item_label = _schema_label_text(schema.get("items"), depth + 1)
+        if item_label:
+            types[types.index("array")] = f"array[{item_label}]"
+    type_label = "|".join(types)
+    if ref_name:
+        return (
+            ref_name if type_label in ("", "object") else f"{ref_name} ({type_label})"
+        )
+    if type_label:
+        return type_label
+    for keyword in ("allOf", "anyOf", "oneOf"):
+        branches = schema.get(keyword)
+        if not isinstance(branches, list):
+            continue
+        labels = [
+            label
+            for label in (_schema_label_text(item, depth + 1) for item in branches)
+            if label
+        ]
+        if len(labels) == 1 and keyword == "allOf":
+            return labels[0]
+        if labels:
+            more = ", …" if len(labels) > 3 else ""
+            return f"{keyword}[{', '.join(labels[:3])}{more}]"
+    return ""
+
+
+def _container_at(root: Any, path: tuple[Any, ...]) -> Any:
+    current = root
+    for part in path:
+        if not _has_entry(current, part):
+            return None
+        current = current[part]
+    return current if isinstance(current, (dict, list)) else None
+
+
+def _has_entry(container: Any, key: Any) -> bool:
+    if isinstance(container, dict):
+        return key in container
+    if isinstance(container, list):
+        return isinstance(key, int) and 0 <= key < len(container)
+    return False
 
 
 def _json_size(value: Any) -> int:
     return len(json.dumps(value, ensure_ascii=False, sort_keys=True))
-
-
-def _replace_at_path(root: Any, path: tuple[Any, ...], replacement: Any) -> None:
-    if not path:
-        return
-    parent = root
-    for part in path[:-1]:
-        parent = parent[part]
-    parent[path[-1]] = replacement
 
 
 def _add_output_limit(parser: argparse.ArgumentParser) -> None:

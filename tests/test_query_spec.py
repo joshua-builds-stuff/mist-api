@@ -157,6 +157,66 @@ class QuerySpecCliTests(unittest.TestCase):
         self.assertTrue(document["_meta"]["truncated"])
         self.assertIn("output-character-budget", document["_meta"]["reasons"])
 
+    def test_large_schema_is_trimmed_to_property_names_not_wiped(self) -> None:
+        result = self.run_cli("schema", "Huge", "--max-depth", "1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertLessEqual(len(result.stdout), 6_000)
+        document = json.loads(result.stdout)
+        self.assertIn("output-character-budget", document["_meta"]["reasons"])
+        properties = document["data"]["schema"]["properties"]
+        self.assertEqual(len(properties), 100)
+        self.assertEqual(properties["field_099"], "string")
+
+        tight = self.run_cli("schema", "Huge", "--max-chars", "1500")
+        self.assertEqual(tight.returncode, 0, tight.stderr)
+        self.assertLessEqual(len(tight.stdout), 1_500)
+        schema = json.loads(tight.stdout)["data"]["schema"]
+        self.assertEqual(schema["type"], "object")
+        kept = [name for name in schema["properties"] if name.startswith("field_")]
+        self.assertEqual(kept[0], "field_000")
+        self.assertEqual(
+            len(kept) + schema["properties"]["x-query-omitted"], len(properties)
+        )
+
+    def test_render_collapses_nested_schemas_to_labels_before_dropping(
+        self,
+    ) -> None:
+        nested = {
+            "allOf": [
+                {
+                    "type": "object",
+                    "x-expanded-from": "#/components/schemas/wlan_airwatch",
+                    "properties": {"enabled": {"type": "boolean"}},
+                },
+                {"description": "Integration settings " + "x" * 200},
+            ]
+        }
+        data = {
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "airwatch": nested,
+                    "ap_ids": {
+                        "type": ["array", "null"],
+                        "items": {"type": "string"},
+                        "description": "y" * 200,
+                    },
+                    "ssid": {"type": "string", "description": "z" * 200},
+                },
+            }
+        }
+        rendered = query_spec._render_json(data, 400)
+        self.assertLessEqual(len(rendered), 400)
+        properties = json.loads(rendered)["data"]["schema"]["properties"]
+        self.assertEqual(
+            properties,
+            {
+                "airwatch": "wlan_airwatch",
+                "ap_ids": "array[string]|null",
+                "ssid": "string",
+            },
+        )
+
     def test_cycle_terminates_and_secret_defaults_and_examples_are_omitted(
         self,
     ) -> None:
