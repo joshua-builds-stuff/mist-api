@@ -68,10 +68,21 @@ def expected_confirmation(site_id: str, wlan_id: str) -> str:
 
 
 def _put_outcome_is_indeterminate(exc: MistAPIError) -> bool:
-    """True when the PUT may have been applied despite the client error."""
+    """True when the PUT may have been applied despite the client error.
+
+    HTTP 4xx is a completed rejection. Timeouts, connection failures, truncated
+    bodies, and a success status whose payload is not valid JSON are not: the
+    write may already be live, so the caller must read the WLAN back before
+    keeping or replacing the rollback record.
+    """
 
     text = str(exc)
-    return "Timeout" in text or "ConnectionError" in text
+    marker = "failed with HTTP "
+    start = text.find(marker)
+    if start < 0:
+        return True
+    status = text[start + len(marker) :].split(maxsplit=1)[0]
+    return not (len(status) == 3 and status.isdigit() and status.startswith("4"))
 
 
 def _publish_rollback_record(
