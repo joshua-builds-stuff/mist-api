@@ -645,7 +645,7 @@ def _find_schema_property(
         labels = _variant_labels(schema, keyword, branches)
         entries = tuple(
             (label, _find_schema_property(spec, branch, requested_name, seen_refs))
-            for label, branch in zip(labels, branches)
+            for label, branch in zip(labels, branches, strict=True)
         )
         if any(entry is not None for _, entry in entries):
             found.append(
