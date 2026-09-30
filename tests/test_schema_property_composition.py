@@ -121,9 +121,7 @@ def _fixture_spec() -> dict:
 
 
 def _schema_property(name: str, property_name: str) -> dict:
-    args = argparse.Namespace(
-        name=name, property=property_name, max_depth=3, limit=20
-    )
+    args = argparse.Namespace(name=name, property=property_name, max_depth=3, limit=20)
     output = query_spec.cmd_schema(_fixture_spec(), args)
     return output.value
 

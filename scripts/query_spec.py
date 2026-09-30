@@ -776,8 +776,8 @@ def _merge_schema_constraints(
             if shared:
                 merged[key] = shared[0] if len(shared) == 1 else shared
                 continue
-        elif key == "required" and isinstance(current, list) and isinstance(
-            value, list
+        elif (
+            key == "required" and isinstance(current, list) and isinstance(value, list)
         ):
             merged[key] = [*current, *(item for item in value if item not in current)]
             continue
@@ -786,8 +786,8 @@ def _merge_schema_constraints(
             if shared:
                 merged[key] = shared
                 continue
-        elif key == "nullable" and isinstance(current, bool) and isinstance(
-            value, bool
+        elif (
+            key == "nullable" and isinstance(current, bool) and isinstance(value, bool)
         ):
             merged[key] = current and value
             continue
@@ -813,9 +813,7 @@ def _property_match_name(located: _PropertyLookup) -> str:
     if isinstance(located, _PropertyMatch):
         return located.name
     return next(
-        _property_match_name(entry)
-        for _, entry in located.entries
-        if entry is not None
+        _property_match_name(entry) for _, entry in located.entries if entry is not None
     )
 
 
