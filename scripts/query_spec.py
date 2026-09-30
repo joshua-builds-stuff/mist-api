@@ -354,19 +354,10 @@ def cmd_schema(spec: dict[str, Any], args: argparse.Namespace) -> CommandOutput:
         located = _find_schema_property(spec, schemas[name], args.property)
         if located is None:
             raise QueryError(f"Schema '{name}' has no property named '{args.property}'")
-        property_name, property_schema, required = located
-        document = _expand_schema(
-            spec,
-            property_schema,
-            args.max_depth,
-            budget=budget,
-            context_name=property_name,
-        )
         value = {
             "component": name,
-            "property": property_name,
-            "required": required,
-            "schema": document,
+            "property": _property_match_name(located),
+            **_render_property_match(spec, located, args.max_depth, budget),
         }
     else:
         document = _expand_schema(spec, schemas[name], args.max_depth, budget=budget)
@@ -559,16 +550,49 @@ def _resolve_object_ref(
     return {**base, **{key: item for key, item in value.items() if key != "$ref"}}
 
 
+@dataclass(frozen=True)
+class _PropertyMatch:
+    name: str
+    schema: dict[str, Any]
+    required: bool
+
+
+@dataclass(frozen=True)
+class _PropertyVariants:
+    """A property that differs across oneOf/anyOf branches."""
+
+    keyword: str
+    discriminator: str | None
+    entries: tuple[tuple[str, _PropertyMatch | _PropertyVariants | None], ...]
+
+
+_PropertyLookup = _PropertyMatch | _PropertyVariants
+
+_LOWER_BOUND_KEYWORDS = frozenset(
+    {"minimum", "exclusiveMinimum", "minLength", "minItems", "minProperties"}
+)
+_UPPER_BOUND_KEYWORDS = frozenset(
+    {"maximum", "exclusiveMaximum", "maxLength", "maxItems", "maxProperties"}
+)
+_ANNOTATION_KEYWORDS = frozenset({"title", "description", "example", "examples"})
+
+
 def _find_schema_property(
     spec: dict[str, Any],
     schema: Any,
     requested_name: str,
     seen_refs: frozenset[str] = frozenset(),
-) -> tuple[str, dict[str, Any], bool] | None:
-    """Find one exact property through local refs and composition keywords."""
+) -> _PropertyLookup | None:
+    """Find one exact property through local refs and composition keywords.
+
+    Own properties, ``$ref`` targets and ``allOf`` branches all apply, so their
+    matches are merged. ``oneOf``/``anyOf`` matches are reported per variant.
+    """
 
     if not isinstance(schema, dict):
         return None
+
+    found: list[_PropertyLookup] = []
 
     properties = schema.get("properties")
     if isinstance(properties, dict):
@@ -587,10 +611,12 @@ def _find_schema_property(
             if not isinstance(property_schema, dict):
                 raise QueryError(f"Property '{name}' does not contain a schema object")
             required = schema.get("required")
-            return (
-                name,
-                property_schema,
-                isinstance(required, list) and name in required,
+            found.append(
+                _PropertyMatch(
+                    name,
+                    property_schema,
+                    isinstance(required, list) and name in required,
+                )
             )
 
     ref = schema.get("$ref")
@@ -603,22 +629,221 @@ def _find_schema_property(
             seen_refs | {ref},
         )
         if located is not None:
-            return located
+            found.append(located)
 
-    for keyword in ("allOf", "anyOf", "oneOf"):
+    branches = schema.get("allOf")
+    if isinstance(branches, list):
+        for branch in branches:
+            located = _find_schema_property(spec, branch, requested_name, seen_refs)
+            if located is not None:
+                found.append(located)
+
+    for keyword in ("anyOf", "oneOf"):
         branches = schema.get(keyword)
         if not isinstance(branches, list):
             continue
-        for branch in branches:
-            located = _find_schema_property(
-                spec,
-                branch,
-                requested_name,
-                seen_refs,
+        labels = _variant_labels(schema, keyword, branches)
+        entries = tuple(
+            (label, _find_schema_property(spec, branch, requested_name, seen_refs))
+            for label, branch in zip(labels, branches, strict=True)
+        )
+        if any(entry is not None for _, entry in entries):
+            found.append(
+                _property_variants(keyword, _discriminator_name(schema), entries)
             )
-            if located is not None:
-                return located
+
+    if not found:
+        return None
+    combined = found[0]
+    for item in found[1:]:
+        combined = _combine_property_lookups(spec, combined, item)
+    return combined
+
+
+def _discriminator_name(schema: dict[str, Any]) -> str | None:
+    discriminator = schema.get("discriminator")
+    if isinstance(discriminator, dict):
+        name = discriminator.get("propertyName")
+        if isinstance(name, str):
+            return name
     return None
+
+
+def _variant_labels(
+    schema: dict[str, Any], keyword: str, branches: list[Any]
+) -> list[str]:
+    discriminator = schema.get("discriminator")
+    mapping = discriminator.get("mapping") if isinstance(discriminator, dict) else None
+    labels: list[str] = []
+    for index, branch in enumerate(branches):
+        ref = branch.get("$ref") if isinstance(branch, dict) else None
+        label = ""
+        if isinstance(ref, str) and isinstance(mapping, dict):
+            label = next(
+                (
+                    str(key)
+                    for key, target in mapping.items()
+                    if isinstance(target, str)
+                    and (target == ref or target == _ref_name(ref))
+                ),
+                "",
+            )
+        if not label and isinstance(ref, str):
+            label = _ref_name(ref)
+        if not label or label in labels:
+            label = f"{keyword}[{index}]"
+        labels.append(label)
+    return labels
+
+
+def _property_variants(
+    keyword: str,
+    discriminator: str | None,
+    entries: tuple[tuple[str, _PropertyLookup | None], ...],
+) -> _PropertyLookup:
+    first = entries[0][1] if entries else None
+    if isinstance(first, _PropertyMatch) and all(
+        isinstance(entry, _PropertyMatch)
+        and entry.schema == first.schema
+        and entry.required == first.required
+        for _, entry in entries
+    ):
+        return first
+    return _PropertyVariants(keyword, discriminator, entries)
+
+
+def _combine_property_lookups(
+    spec: dict[str, Any], first: _PropertyLookup, second: _PropertyLookup
+) -> _PropertyLookup:
+    """Combine two lookups that both apply to the same instance."""
+
+    if isinstance(first, _PropertyVariants):
+        return _property_variants(
+            first.keyword,
+            first.discriminator,
+            tuple(
+                (
+                    label,
+                    second
+                    if entry is None
+                    else _combine_property_lookups(spec, entry, second),
+                )
+                for label, entry in first.entries
+            ),
+        )
+    if isinstance(second, _PropertyVariants):
+        return _property_variants(
+            second.keyword,
+            second.discriminator,
+            tuple(
+                (
+                    label,
+                    first
+                    if entry is None
+                    else _combine_property_lookups(spec, first, entry),
+                )
+                for label, entry in second.entries
+            ),
+        )
+    if first.schema == second.schema:
+        schema = first.schema
+    else:
+        schema = _merge_schema_constraints(
+            _resolve_object_ref(spec, first.schema),
+            _resolve_object_ref(spec, second.schema),
+        )
+    return _PropertyMatch(first.name, schema, first.required or second.required)
+
+
+def _merge_schema_constraints(
+    first: dict[str, Any], second: dict[str, Any]
+) -> dict[str, Any]:
+    """Merge two schemas that must both hold, keeping unmergeable parts."""
+
+    merged = dict(first)
+    leftovers: dict[str, Any] = {}
+    for key, value in second.items():
+        if key not in merged:
+            merged[key] = value
+            continue
+        current = merged[key]
+        if current == value or key in _ANNOTATION_KEYWORDS:
+            continue
+        if key == "type":
+            current_types = current if isinstance(current, list) else [current]
+            value_types = value if isinstance(value, list) else [value]
+            shared = [item for item in current_types if item in value_types]
+            if shared:
+                merged[key] = shared[0] if len(shared) == 1 else shared
+                continue
+        elif (
+            key == "required" and isinstance(current, list) and isinstance(value, list)
+        ):
+            merged[key] = [*current, *(item for item in value if item not in current)]
+            continue
+        elif key == "enum" and isinstance(current, list) and isinstance(value, list):
+            shared = [item for item in current if item in value]
+            if shared:
+                merged[key] = shared
+                continue
+        elif (
+            key == "nullable" and isinstance(current, bool) and isinstance(value, bool)
+        ):
+            merged[key] = current and value
+            continue
+        elif _is_number(current) and _is_number(value):
+            if key in _LOWER_BOUND_KEYWORDS:
+                merged[key] = max(current, value)
+                continue
+            if key in _UPPER_BOUND_KEYWORDS:
+                merged[key] = min(current, value)
+                continue
+        leftovers[key] = value
+    if leftovers:
+        existing = merged.get("allOf")
+        merged["allOf"] = [*(existing if isinstance(existing, list) else []), leftovers]
+    return merged
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _property_match_name(located: _PropertyLookup) -> str:
+    if isinstance(located, _PropertyMatch):
+        return located.name
+    return next(
+        _property_match_name(entry) for _, entry in located.entries if entry is not None
+    )
+
+
+def _render_property_match(
+    spec: dict[str, Any],
+    located: _PropertyLookup,
+    depth: int,
+    budget: ExpansionBudget,
+) -> dict[str, Any]:
+    if isinstance(located, _PropertyMatch):
+        return {
+            "required": located.required,
+            "schema": _expand_schema(
+                spec,
+                located.schema,
+                depth,
+                budget=budget,
+                context_name=located.name,
+            ),
+        }
+    return {
+        "composition": located.keyword,
+        "discriminator": located.discriminator,
+        "variants": {
+            label: _render_property_match(spec, entry, depth, budget)
+            for label, entry in located.entries
+            if entry is not None
+        },
+        "absentFrom": [label for label, entry in located.entries if entry is None],
+    }
 
 
 def _expansion_budget() -> ExpansionBudget:
