@@ -1,5 +1,5 @@
 -r examples/requirements.txt
-bandit>=1.8,<2
+bandit>=1.9.4,<2
 pytest>=9.1.1,<10
 ruff>=0.16.9,<1
 pip-audit>=2.10.1,<3
