@@ -23,6 +23,14 @@
 
 ## 2026-10-01 — **minor**
 
+Documentation sync for Dependabot CI and dependency pin updates already merged to `main` (#21, #22, #23, #24, #25, #27, and #28). Pull request #26 was closed as a duplicate of #23 and was not merged. These are install and CI pin floors only. No API changes. No security-facing behavior change.
+
+- `.github/workflows/ci.yml` pins `actions/checkout` at v7.0.1 (`3d3c42e5aac5ba805825da76410c181273ba90b1`) and `actions/setup-python` at v7.0.0 (`5fda3b95a4ea91299a34e894583c3862153e4b97`). The test job and the platform-smoke job both use those SHA pins.
+- `examples/requirements.txt` requires `requests>=2.34.2,<3`. The public-release hardening note above recorded a Requests minimum of 2.33.
+- `requirements-dev.txt` requires `pytest>=9.1.1,<10`, `pip-audit>=2.10.1,<3`, `ruff>=0.16.9,<1`, and `bandit>=1.9.4,<2`.
+
+## 2026-10-01 — **minor**
+
 Documentation sync for engineering changes #18 and #19, already merged to `main`. No install, upgrade, environment, or prerequisite changes. No security-facing behavior change.
 
 - `scripts/query_spec.py show` labels a parameter that is a `$ref`, including a single `$ref` inside `allOf`, `anyOf`, or `oneOf`. The label is the component name, its `type`, and `enum[...]` or `const=` when the component defines them. A required path parameter such as `band` prints `dot11_band string enum[24, 5, 5-dedicated, 5-selectable, 6, 6-dedicated, 6-selectable]` instead of `?`.
