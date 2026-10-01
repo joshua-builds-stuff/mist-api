@@ -186,10 +186,14 @@ def load_rollback_record(path: Path) -> dict[str, Any]:
     try:
         if path.stat().st_size > MAX_ROLLBACK_RECORD_BYTES:
             raise WlanUpdateError("Rollback record exceeds the 16 KiB safety limit")
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        with path.open("rb") as stream:
+            raw = stream.read(MAX_ROLLBACK_RECORD_BYTES + 1)
+        if len(raw) > MAX_ROLLBACK_RECORD_BYTES:
+            raise WlanUpdateError("Rollback record exceeds the 16 KiB safety limit")
+        payload = json.loads(raw.decode("utf-8"))
     except FileNotFoundError:
         raise WlanUpdateError(f"Rollback record not found: {path}") from None
-    except (OSError, UnicodeError, json.JSONDecodeError):
+    except (OSError, ValueError, RecursionError):
         raise WlanUpdateError(
             "Rollback record could not be read as valid JSON"
         ) from None

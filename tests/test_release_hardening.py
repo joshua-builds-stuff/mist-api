@@ -89,6 +89,29 @@ def test_spec_read_is_bounded_after_stat() -> None:
         assert stream.closed
 
 
+def test_rollback_read_is_bounded_after_stat() -> None:
+    stream = io.BytesIO(b"x" * (wlan.MAX_ROLLBACK_RECORD_BYTES + 2))
+    with (
+        mock.patch.object(Path, "stat", return_value=mock.Mock(st_size=1)),
+        mock.patch.object(Path, "open", return_value=stream),
+        mock.patch.object(stream, "read", wraps=stream.read) as read,
+    ):
+        with pytest.raises(wlan.WlanUpdateError, match="16 KiB safety limit"):
+            wlan.load_rollback_record(Path("growing.json"))
+        read.assert_called_once_with(wlan.MAX_ROLLBACK_RECORD_BYTES + 1)
+        assert stream.closed
+
+
+@pytest.mark.parametrize("error", [RecursionError, ValueError])
+def test_rollback_parser_limit_errors_are_normalized(tmp_path, error) -> None:
+    record = tmp_path / "rollback.json"
+    record.write_text("{}", encoding="utf-8")
+    with mock.patch.object(json, "loads", side_effect=error("private body")):
+        with pytest.raises(wlan.WlanUpdateError, match="valid JSON") as captured:
+            wlan.load_rollback_record(record)
+    assert "private body" not in str(captured.value)
+
+
 def test_parser_resource_errors_are_normalized() -> None:
     with mock.patch.object(json, "loads", side_effect=RecursionError("private body")):
         with pytest.raises(webhook.WebhookRequestError, match="valid UTF-8 JSON"):
