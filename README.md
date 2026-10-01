@@ -67,7 +67,7 @@ The usual command flow is:
 2. `find TERM` searches for possible endpoints when the exact path is unknown.
 3. `show METHOD PATH` displays a concise view of one endpoint, including parameters, security, request body, and responses. Request and response schemas are named even when the component sits inside `allOf`, `anyOf`, `oneOf`, or an array's `items`.
 4. `operation METHOD PATH` is used when expanded request or response schemas are needed.
-5. `schema NAME` is used to inspect a reusable data model. Add `--property FIELD` when only one field is needed. The name printed by `show` is the usual argument.
+5. `schema NAME` is used to inspect a reusable data model. Add `--property FIELD` when only one field is needed. The name printed by `show` is the usual argument. `allOf` constraints on that field are merged into one `required` flag and schema. A `oneOf` or `anyOf` field stays in that same flat shape when every variant agrees. When the variants differ, the JSON lists each variant and names the variants that omit the field.
 6. `tags` or `tag NAME` is used to browse groups of related endpoints.
 
 Example:
@@ -77,9 +77,10 @@ python scripts/refresh_openapi.py --offline
 python scripts/query_spec.py find wlans
 python scripts/query_spec.py show GET "/api/v1/orgs/{org_id}/wlans"
 python scripts/query_spec.py operation GET "/api/v1/orgs/{org_id}/wlans" --max-depth 1
+python scripts/query_spec.py schema wlan --property ssid --max-depth 1
 ```
 
-Output is deliberately bounded with `--limit`, `--max-depth`, and `--max-chars`. This keeps searches focused and prevents the full API specification from being placed into the assistant's context. When `schema` or `operation` JSON exceeds `--max-chars`, long text is shortened, nested schemas collapse to one-line labels, and trailing fields become an `x-query-omitted` count. The root schema remains visible through that trimming. [references/openapi.md](references/openapi.md) describes the `show` labels and the trim order.
+Output is deliberately bounded with `--limit`, `--max-depth`, and `--max-chars`. This keeps searches focused and prevents the full API specification from being placed into the assistant's context. When `schema` or `operation` JSON exceeds `--max-chars`, long text is shortened, nested schemas collapse to one-line labels, and trailing fields become an `x-query-omitted` count. The root schema remains visible through that trimming. [references/openapi.md](references/openapi.md) describes the `show` labels, the trim order, and the `schema --property` JSON for composed models.
 
 ### When the example scripts are engaged
 
