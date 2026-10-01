@@ -48,6 +48,53 @@ python scripts/query_spec.py tag "Sites Devices"
 
 Use `find` before increasing limits. Prefer `schema --property` when only one field is material. Keep `--max-depth` and `--max-chars` at their defaults unless necessary.
 
+### `schema --property`
+
+`schema NAME --property FIELD` returns one field from a component schema. The match is case-insensitive, and `property` uses the spelling stored on the schema. Two properties that differ only by letter case are an error (`ambiguous by letter case`). A field that is absent from the component is an error (`has no property named`).
+
+The command prints JSON wrapped in `_meta` and `data`. `data` always includes `component` and `property`.
+
+A single answer also includes `required` (boolean) and `schema` (the expanded field). That shape covers a property declared on the component, a property reached through `$ref`, an `allOf` merge, and a `oneOf` or `anyOf` field that is identical on every variant.
+
+`allOf` branches all apply to the same instance, so their matches are merged into that one answer:
+
+- `required` is true when any branch requires the field.
+- A `required` array inside the field schema is the union of the branch arrays.
+- `type` and `enum` keep the values shared by every branch that sets them. One shared `type` is a string. Several shared types stay a list, in the first branch's order.
+- Lower bounds (`minimum`, `exclusiveMinimum`, `minLength`, `minItems`, `minProperties`) keep the larger number. Upper bounds (`maximum`, `exclusiveMaximum`, `maxLength`, `maxItems`, `maxProperties`) keep the smaller number.
+- When both schemas set `nullable`, the merged value is true only if both are true. A `nullable` set by only one branch is kept.
+- `title`, `description`, `example`, and `examples` keep the earlier value when both branches set them. A value set by only one branch is kept.
+- A constraint that cannot be combined, including a `type` or `enum` with no overlap, remains on the field schema under `allOf`.
+
+`oneOf` and `anyOf` are alternatives. Each branch is one variant. The label is the discriminator `mapping` key when that mapping points at the branch's `$ref` or at the component name at the end of that `$ref`. If there is no matching mapping key, the label is that component name. A branch with no `$ref`, or a label already used by an earlier branch, is named `oneOf[index]` or `anyOf[index]`.
+
+When every variant defines the field with the same schema and the same `required` flag, `data` stays in the flat shape. A composed model such as `deviceprofile` therefore keeps a shared field as one answer, with that field's own type and `required` flag.
+
+When the variants differ, or any variant omits the field, `data` leaves out the top-level `required` and `schema` keys. It adds:
+
+- `composition`: `oneOf` or `anyOf`
+- `discriminator`: the discriminator `propertyName`, or `null` when the component has none
+- `variants`: an object keyed by variant label. Each value is either `{required, schema}` or the same composition object, when a branch is itself composed
+- `absentFrom`: labels of variants that do not define the field. The list is empty when every variant defines it
+
+A property declared on the component beside a `oneOf` or `anyOf` is merged into each variant, including a variant that does not restate the field. Read every variant that applies to the object you are calling. A field can be an array on one variant, an object on another, and listed in `absentFrom` for a third.
+
+```json
+{
+  "component": "example",
+  "property": "name",
+  "composition": "oneOf",
+  "discriminator": "type",
+  "variants": {
+    "ap": {"required": false, "schema": {"type": ["string", "null"]}},
+    "gateway": {"required": true, "schema": {"type": "string"}}
+  },
+  "absentFrom": []
+}
+```
+
+The illustration above is the command's JSON shape, with sample labels. It is not a dump of the live Mist `deviceprofile` schema. `show` continues to print schema names and leaves field expansion to `schema`.
+
 ### Schema names in `show`
 
 `show` prints a schema label for every request-body content type. A response line gains the same kind of label from the first response content entry that has a schema object.

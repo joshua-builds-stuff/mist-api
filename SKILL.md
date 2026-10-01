@@ -59,7 +59,7 @@ python scripts/query_spec.py schema wlan --property ssid --max-depth 1 --max-cha
 python scripts/query_spec.py tag "Sites Devices"
 ```
 
-Use `find` to discover candidates, `show` for a concise operation view, and `operation` only when request or response properties are needed. `show` names component schemas inside `allOf`, `anyOf`, and `oneOf`, and names the schema used as array `items` (`allOf[wlan]`, `array[site]`). Pass that name to `schema` when the fields matter. When one known component field is enough, prefer `schema --property` over expanding the whole schema. Read [references/openapi.md](references/openapi.md) only for cache locations, query syntax, output limits, or path-resolution details.
+Use `find` to discover candidates, `show` for a concise operation view, and `operation` only when request or response properties are needed. `show` names component schemas inside `allOf`, `anyOf`, and `oneOf`, and names the schema used as array `items` (`allOf[wlan]`, `array[site]`). Pass that name to `schema` when the fields matter. When one known component field is enough, prefer `schema --property` over expanding the whole schema. Read a flat `required` and `schema` when the field is uniform, including after `allOf` constraints are merged and when every `oneOf` or `anyOf` variant agrees. When those variants differ, read each entry under `variants` and the labels in `absentFrom`. Read [references/openapi.md](references/openapi.md) only for cache locations, query syntax, output limits, composed-property JSON, or path-resolution details.
 
 Spec paths include `/api/v1`. Request helpers default to a base URL already ending in `/api/v1`, so remove that prefix when constructing helper paths. Full spec URL = server host + spec path.
 
