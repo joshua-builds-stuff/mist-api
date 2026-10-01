@@ -362,7 +362,9 @@ class RejectingPutWlanClient(FakeWlanClient):
     ) -> dict[str, Any]:
         if method == "PUT":
             self.calls.append((method, path, json_body))
-            raise MistAPIError("Mist API PUT request failed with HTTP 400")
+            raise MistAPIError(
+                "Mist API PUT request failed with HTTP 400", status_code=400
+            )
         return super().request_json(method, path, json_body=json_body)
 
 
@@ -609,14 +611,14 @@ def test_ambiguous_put_failure_keeps_previous_rollback_when_ssid_unchanged(
     assert json.loads(rollback.read_text(encoding="utf-8")) == previous
 
 
-def test_http_error_put_keeps_previous_rollback_without_verify_get(
+def test_http_server_error_put_verifies_before_keeping_previous_rollback(
     tmp_path: Path,
 ) -> None:
     rollback = tmp_path / "rollback.json"
     previous = {"before_ssid": "Original", "applied_ssid": "Old"}
     rollback.write_text(json.dumps(previous), encoding="utf-8")
     client = AmbiguousPutWlanClient(
-        [{"ssid": "Old"}, {"ssid": "Old"}],
+        [{"ssid": "Old"}, {"ssid": "Old"}, {"ssid": "Old"}],
         "Mist API PUT request failed with HTTP 500",
     )
 
@@ -632,7 +634,7 @@ def test_http_error_put_keeps_previous_rollback_without_verify_get(
         )
 
     assert json.loads(rollback.read_text(encoding="utf-8")) == previous
-    assert [call[0] for call in client.calls] == ["GET", "GET", "PUT"]
+    assert [call[0] for call in client.calls] == ["GET", "GET", "PUT", "GET"]
 
 
 def test_wlan_timeout_keeps_previous_rollback_when_ssid_unchanged(

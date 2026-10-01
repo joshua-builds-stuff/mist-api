@@ -1,5 +1,24 @@
 # Revision history
 
+## Unreleased — public-release hardening
+
+- Treat HTTP 5xx/408, redirects and transport failures as uncertain WLAN write
+  outcomes. Verify without replaying the PUT; if verification also fails, save
+  a separate private pending recovery record without replacing confirmed rollback.
+  HTTP error classification now uses structured status fields, not message text.
+- Bound webhook connections, inactivity and total lifetime before HTTP parsing;
+  reject duplicate framing/signature headers and unsupported Transfer-Encoding.
+  Normalize parser-limit failures into generic errors and validate env defaults.
+- Bound and memoize schema lookup/ref traversal, cap structural nesting, honor
+  required-only allOf/ref sibling constraints, bound actual spec reads, and retain
+  only the best limited endpoint search results.
+- Raise the Requests minimum to 2.33. Add dependency and tracked/history secret
+  scans, SHA-pin CI actions, enable update automation, and add macOS/Windows tests.
+- Add safe tracked-file sharing instructions, credential/export ignore rules,
+  environment setup, contribution guidance and private security-reporting guidance.
+- Add regression tests for ambiguous writes, pending recovery, schema limits and
+  constraints, and real HTTP handler admission/framing/deadline behavior.
+
 ## 2026-10-01 — **minor**
 
 Documentation sync for engineering changes #18 and #19, already merged to `main`. No install, upgrade, environment, or prerequisite changes. No security-facing behavior change.

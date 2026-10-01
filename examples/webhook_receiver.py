@@ -14,7 +14,9 @@ import ipaddress
 import json
 import logging
 import os
+import socket
 import sys
+import threading
 from collections.abc import Mapping
 from hashlib import sha1, sha256
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,6 +24,11 @@ from typing import Any, BinaryIO
 
 DEFAULT_MAX_BODY_BYTES = 1024 * 1024
 MAX_CONFIGURABLE_BODY_BYTES = 10 * 1024 * 1024
+DEFAULT_MAX_CONNECTIONS = 32
+MAX_CONFIGURABLE_CONNECTIONS = 128
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 10.0
+DEFAULT_CONNECTION_DEADLINE_SECONDS = 30.0
+MAX_CONFIGURABLE_TIMEOUT_SECONDS = 300.0
 SHA1_DIGEST_BYTES = 20
 SHA256_DIGEST_BYTES = 32
 
@@ -41,10 +48,15 @@ class WebhookRequestError(ValueError):
 
 def _header(headers: Mapping[str, str], name: str) -> str | None:
     wanted = name.casefold()
+    result = None
     for key, value in headers.items():
         if key.casefold() == wanted:
-            return value
-    return None
+            if result is not None:
+                raise WebhookRequestError(
+                    400, f"Duplicate {name} headers are not allowed"
+                )
+            result = value
+    return result
 
 
 def _signature_bytes(value: str, algorithm: str, digest_size: int) -> bytes:
@@ -72,6 +84,7 @@ def verify_mist_signature(
         raise SignatureError("Webhook shared secret is not configured")
 
     provided_v2 = _header(headers, "X-Mist-Signature-v2")
+    provided_v1 = _header(headers, "X-Mist-Signature")
     if provided_v2 is not None:
         try:
             supplied_v2 = _signature_bytes(
@@ -87,7 +100,6 @@ def verify_mist_signature(
             raise SignatureError("Invalid Mist v2 webhook signature")
         return "v2"
 
-    provided_v1 = _header(headers, "X-Mist-Signature")
     if provided_v1 is None:
         raise SignatureError("Missing Mist webhook signature")
     try:
@@ -108,6 +120,9 @@ def read_request_body(
 ) -> bytes:
     """Validate request metadata and bound the read before allocation."""
 
+    if _header(headers, "Transfer-Encoding") is not None:
+        raise WebhookRequestError(400, "Transfer-Encoding is not supported")
+
     content_type = _header(headers, "Content-Type")
     media_type = (content_type or "").split(";", 1)[0].strip().casefold()
     if media_type != "application/json":
@@ -116,14 +131,20 @@ def read_request_body(
     content_length = _header(headers, "Content-Length")
     if content_length is None:
         raise WebhookRequestError(411, "Content-Length is required")
-    try:
-        length = int(content_length, 10)
-    except ValueError:
-        raise WebhookRequestError(400, "Content-Length must be an integer") from None
-    if length < 0:
-        raise WebhookRequestError(400, "Content-Length must not be negative")
-    if length > max_body_bytes:
+    content_length = content_length.strip(" \t")
+    if (
+        not content_length
+        or not content_length.isascii()
+        or not content_length.isdecimal()
+    ):
+        raise WebhookRequestError(400, "Content-Length must contain only ASCII digits")
+    normalized = content_length.lstrip("0") or "0"
+    maximum = str(max_body_bytes)
+    if len(normalized) > len(maximum) or (
+        len(normalized) == len(maximum) and normalized > maximum
+    ):
         raise WebhookRequestError(413, "Webhook body exceeds the configured limit")
+    length = int(normalized, 10)
 
     raw_body = stream.read(length)
     if len(raw_body) != length:
@@ -136,7 +157,7 @@ def parse_json_body(raw_body: bytes) -> dict[str, Any] | list[Any]:
 
     try:
         payload = json.loads(raw_body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except (ValueError, RecursionError):
         raise WebhookRequestError(
             400, "Webhook body must be valid UTF-8 JSON"
         ) from None
@@ -198,10 +219,75 @@ class MistWebhookServer(ThreadingHTTPServer):
         server_address: tuple[str, int],
         secret: bytes,
         max_body_bytes: int,
+        *,
+        max_connections: int = DEFAULT_MAX_CONNECTIONS,
+        request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+        connection_deadline_seconds: float = DEFAULT_CONNECTION_DEADLINE_SECONDS,
     ) -> None:
+        if (
+            type(max_connections) is not int
+            or not 1 <= max_connections <= MAX_CONFIGURABLE_CONNECTIONS
+        ):
+            raise ValueError(
+                f"max_connections must be between 1 and {MAX_CONFIGURABLE_CONNECTIONS}"
+            )
+        for name, value in (
+            ("request_timeout_seconds", request_timeout_seconds),
+            ("connection_deadline_seconds", connection_deadline_seconds),
+        ):
+            if not 0 < value <= MAX_CONFIGURABLE_TIMEOUT_SECONDS:
+                raise ValueError(
+                    f"{name} must be greater than zero and at most {MAX_CONFIGURABLE_TIMEOUT_SECONDS:g}"
+                )
         self.webhook_secret = secret
         self.max_body_bytes = max_body_bytes
+        self.request_timeout_seconds = request_timeout_seconds
+        self.connection_deadline_seconds = connection_deadline_seconds
+        self._connection_slots = threading.BoundedSemaphore(max_connections)
         super().__init__(server_address, MistWebhookHandler)
+
+    def process_request(
+        self, request: socket.socket, client_address: tuple[str, int]
+    ) -> None:
+        if not self._connection_slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            request.settimeout(self.request_timeout_seconds)
+            super().process_request(request, client_address)
+        except BaseException:
+            self._connection_slots.release()
+            raise
+
+    @staticmethod
+    def _expire_connection(request: socket.socket) -> None:
+        try:
+            request.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass  # A completed worker may already have closed the socket.
+
+    def process_request_thread(
+        self, request: socket.socket, client_address: tuple[str, int]
+    ) -> None:
+        deadline = None
+        try:
+            deadline = threading.Timer(
+                self.connection_deadline_seconds, self._expire_connection, (request,)
+            )
+            deadline.daemon = True
+            deadline.start()
+            self.finish_request(request, client_address)
+        except (ConnectionError, TimeoutError):
+            logger.info("Webhook connection closed before completion")
+        except Exception:
+            self.handle_error(request, client_address)
+        finally:
+            if deadline is not None:
+                deadline.cancel()
+            try:
+                self.shutdown_request(request)
+            finally:
+                self._connection_slots.release()
 
 
 class MistWebhookHandler(BaseHTTPRequestHandler):
@@ -214,6 +300,7 @@ class MistWebhookHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
@@ -269,16 +356,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("PORT", "8080")),
+        default=os.environ.get("PORT", "8080"),
         help="Listen port",
     )
     parser.add_argument(
         "--max-body-bytes",
         type=int,
-        default=int(
-            os.environ.get("MAX_CONTENT_LENGTH_BYTES", str(DEFAULT_MAX_BODY_BYTES))
-        ),
+        default=os.environ.get("MAX_CONTENT_LENGTH_BYTES", str(DEFAULT_MAX_BODY_BYTES)),
         help="Maximum accepted request body size",
+    )
+    parser.add_argument(
+        "--max-connections",
+        type=int,
+        default=DEFAULT_MAX_CONNECTIONS,
+        help="Maximum active connections (default: 32; maximum: 128)",
+    )
+    parser.add_argument(
+        "--request-timeout-seconds",
+        type=float,
+        default=DEFAULT_REQUEST_TIMEOUT_SECONDS,
+        help="Socket inactivity timeout (default: 10 seconds)",
+    )
+    parser.add_argument(
+        "--connection-deadline-seconds",
+        type=float,
+        default=DEFAULT_CONNECTION_DEADLINE_SECONDS,
+        help="Total connection lifetime (default: 30 seconds)",
     )
     return parser.parse_args()
 
@@ -300,14 +403,17 @@ def main() -> int:
             args.host,
             allow_non_loopback=args.allow_non_loopback,
         )
+        server = MistWebhookServer(
+            (host, args.port),
+            secret.encode("utf-8"),
+            args.max_body_bytes,
+            max_connections=args.max_connections,
+            request_timeout_seconds=args.request_timeout_seconds,
+            connection_deadline_seconds=args.connection_deadline_seconds,
+        )
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
 
-    server = MistWebhookServer(
-        (host, args.port),
-        secret.encode("utf-8"),
-        args.max_body_bytes,
-    )
     logger.info("Listening on http://%s:%s/mist/webhook", host, args.port)
     try:
         server.serve_forever()

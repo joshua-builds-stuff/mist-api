@@ -70,13 +70,35 @@ def expected_confirmation(site_id: str, wlan_id: str) -> str:
 def _put_outcome_is_indeterminate(exc: MistAPIError) -> bool:
     """True when the PUT may have been applied despite the client error.
 
-    HTTP 4xx/5xx (``failed with HTTP N``) are completed rejections. Timeouts,
-    connection errors, chunked-encoding failures, other request exceptions,
-    and a 2xx body that was not valid JSON are indeterminate: read the WLAN
+    HTTP 5xx/408, redirects, timeouts, connection errors, chunked-encoding
+    failures, other request exceptions, and a malformed 2xx JSON body are
+    indeterminate: read the WLAN
     back before keeping or replacing the rollback record.
     """
 
-    return "failed with HTTP " not in str(exc)
+    return exc.outcome_indeterminate
+
+
+def _save_pending_recovery(
+    client: MistClient,
+    rollback_file: Path,
+    site_id: str,
+    wlan_id: str,
+    before_ssid: str,
+    desired_ssid: str,
+) -> Path:
+    """Keep uncertain recovery information separate from confirmed rollback."""
+    pending = rollback_file.with_name(f"{rollback_file.name}.pending.json")
+    record = create_rollback_record(client, site_id, wlan_id, before_ssid, desired_ssid)
+    record["outcome"] = "indeterminate"
+    try:
+        atomic_write_private_json(pending, record)
+    except (OSError, ValueError) as exc:
+        raise WlanUpdateError(
+            "Write outcome is unknown and pending recovery could not be saved; "
+            "use the previous SSID in the preview and inspect the live WLAN"
+        ) from exc
+    return pending
 
 
 def _publish_rollback_record(
@@ -266,7 +288,15 @@ def apply_ssid_change(
         verified = read_wlan(client, path)
     except (MistAPIError, WlanUpdateError) as verify_exc:
         if put_error is not None:
-            raise put_error from None
+            recovery_note = "inspect the live WLAN before attempting another write"
+            if rollback_file is not None:
+                pending = _save_pending_recovery(
+                    client, rollback_file, site_id, wlan_id, current_ssid, desired_ssid
+                )
+                recovery_note += f"; pending recovery saved to {pending}"
+            raise WlanUpdateError(
+                f"Write outcome is unknown; {recovery_note}"
+            ) from None
         # PUT returned success; the follow-up GET timed out or failed.
         if rollback_file is not None:
             _publish_rollback_record(

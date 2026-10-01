@@ -40,9 +40,22 @@ The new record replaces the previous file in two cases:
 
 If the SSID changed and the record cannot be saved, the reported error is `SSID was updated but the rollback record could not be saved`. That same preview shows the previous SSID. This applies both after a confirmed change and after a successful PUT whose verification read failed.
 
-A PUT error whose text contains `failed with HTTP` is a completed rejection for any non-success status, including 4xx and 5xx. The script does not GET the WLAN again, and the previous file stays as it was.
+A structured HTTP 4xx error other than 408 is treated as a rejection; the previous
+rollback file is retained. Classification uses `MistAPIError.status_code`, never
+message text. HTTP 5xx, 408, redirects, transport errors and malformed successful
+responses are indeterminate: the server may have applied the change. Read the WLAN
+again without retrying the PUT. No specific Mist backend behavior is assumed.
 
 Any other PUT error may still have been applied. That set is a timeout, a connection error, a chunked-encoding failure, any other request exception, and a 2xx body that was not valid JSON. The script then GETs the WLAN. When that GET shows the desired SSID, the command saves the new record and finishes as a verified update (`Update verified.`). When the SSID is unchanged, the previous file stays and the original PUT error is reported. When the PUT itself succeeded and the follow-up GET returns a different SSID, the previous file stays and verification fails.
+
+When an indeterminate PUT is followed by a failed verification GET, the command
+reports `Write outcome is unknown` and saves `<rollback-file>.pending.json` with
+owner-only permissions. It contains the same minimal before/intended values and
+an `outcome: indeterminate` marker; the confirmed rollback file stays unchanged.
+Do not blindly replay the write. Inspect the live WLAN and reconcile the pending
+record first. Pending records are deliberately rejected by `--rollback`; that
+mode accepts only confirmed records. Pending files are retained for manual review
+and are not automatically deleted after later attempts.
 
 `--rollback FILE` restores `before_ssid` only when the live SSID still equals the record's `applied_ssid`, the site and WLAN ids match, and the selected base URL matches the record. That mode does not write a new rollback file.
 

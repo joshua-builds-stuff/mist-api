@@ -45,6 +45,19 @@ logger = logging.getLogger("mist-client")
 class MistAPIError(RuntimeError):
     """A deliberately secret-free Mist API failure."""
 
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+    @property
+    def outcome_indeterminate(self) -> bool:
+        """Transport errors and server failures do not prove a write rejected."""
+        return (
+            self.status_code is None
+            or not 400 <= self.status_code < 500
+            or self.status_code == 408
+        )
+
 
 def _json_payload(
     json_body: Mapping[str, Any] | Sequence[Any] | None,
@@ -289,7 +302,8 @@ class MistClient:
                 status_code = response.status_code
                 response.close()
                 raise MistAPIError(
-                    f"Mist API {normalized_method} request failed with HTTP {status_code}"
+                    f"Mist API {normalized_method} request failed with HTTP {status_code}",
+                    status_code=status_code,
                 )
             return response
 

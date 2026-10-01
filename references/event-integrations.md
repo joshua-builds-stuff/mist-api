@@ -28,6 +28,16 @@ Also:
 
 Treat `examples/webhook_receiver.py` as a localhost test harness, not a production service. It refuses non-loopback bind addresses unless `--allow-non-loopback` is supplied explicitly; that flag does not add TLS or production hardening.
 
+The harness admits at most 32 connections (`--max-connections`, maximum 128),
+sets a 10-second socket inactivity timeout (`--request-timeout-seconds`), and
+enforces a 30-second total connection deadline (`--connection-deadline-seconds`).
+Timeouts must be positive and at most 300 seconds. These apply before parsing
+the request line or headers, not only to authenticated body processing. It rejects
+duplicate framing/signature headers, unsupported Transfer-Encoding, and non-ASCII
+decimal Content-Length. Connections close after each POST response. For a remote
+development machine, explicitly use `--host 0.0.0.0 --allow-non-loopback` only on
+a trusted network; never expose this harness directly to the internet.
+
 ## WebSockets
 
 - Implement reconnect with bounded exponential backoff and jitter.

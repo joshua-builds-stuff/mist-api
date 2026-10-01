@@ -125,16 +125,31 @@ def validate_document(document: Any) -> str:
     return version.strip()
 
 
+def read_json_document(
+    path: str | os.PathLike[str], *, max_bytes: int = MAX_SPEC_BYTES
+) -> Any:
+    """Bound the actual read even when a file changes after stat."""
+    spec_path = Path(path)
+    if spec_path.stat().st_size > max_bytes:
+        raise SpecValidationError(f"document exceeds the {max_bytes}-byte size limit")
+    with spec_path.open("rb") as stream:
+        raw = stream.read(max_bytes + 1)
+    if len(raw) > max_bytes:
+        raise SpecValidationError(f"document exceeds the {max_bytes}-byte size limit")
+    decoded = raw.decode("utf-8")
+    del raw
+    try:
+        return json.loads(decoded)
+    except json.JSONDecodeError:
+        raise
+    except (RecursionError, ValueError) as exc:
+        raise SpecValidationError("JSON document exceeds parser limits") from exc
+
+
 def validate_spec(path: str | os.PathLike[str]) -> str:
     """Validate an OpenAPI JSON file and return its advertised version."""
-    spec_path = Path(path)
     try:
-        if spec_path.stat().st_size > MAX_SPEC_BYTES:
-            raise SpecValidationError(
-                f"document exceeds the {MAX_SPEC_BYTES}-byte size limit"
-            )
-        with spec_path.open("r", encoding="utf-8") as stream:
-            document = json.load(stream)
+        document = read_json_document(path)
     except SpecValidationError:
         raise
     except json.JSONDecodeError as exc:

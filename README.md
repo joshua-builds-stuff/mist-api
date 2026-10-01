@@ -89,7 +89,7 @@ The assistant reads the closest matching example before creating REST code. Thes
 - `examples/mist_client.py` is the shared API client used by the REST examples. It handles token attachment, approved HTTPS hosts, timeouts, bounded retries, pagination, and safe errors. It is imported by other examples rather than normally run by itself. `request` and `request_json` accept a JSON object or a JSON array as `json_body`. An array is sent unchanged. A string, bytes value, set, or number is rejected before any request is sent. `paginate` stops on a short or empty page. When the last page allowed by `max_pages` is full, it reads one more page and accepts the result when that page is empty.
 - `examples/list_sites.py` is used as the starting pattern for listing every site in an organization.
 - `examples/get_site_devices_to_csv.py` is used for resolving a site and exporting its device statistics to CSV.
-- `examples/update_wlan_stub.py` is used for previewing, applying, verifying, or rolling back one WLAN SSID change. It remains read-only unless `--apply` and the matching confirmation target are supplied. A successful apply replaces the rollback file only after a follow-up read shows the new SSID, or after a successful PUT whose verification read cannot be completed. A rejected PUT leaves the previous rollback file unchanged. The file format and failure cases are in [references/safety-and-troubleshooting.md](references/safety-and-troubleshooting.md).
+- `examples/update_wlan_stub.py` is used for previewing, applying, verifying, or rolling back one WLAN SSID change. It remains read-only unless `--apply` and the matching confirmation target are supplied. Server failures and uncertain transport outcomes are verified without retrying the PUT. When both the write outcome and verification are uncertain, a separate private pending recovery record preserves the before/intended values without replacing confirmed rollback. The file format and failure cases are in [references/safety-and-troubleshooting.md](references/safety-and-troubleshooting.md).
 - `examples/webhook_receiver.py` is used when testing inbound Mist webhook delivery and signature validation on a local machine.
 
 Reference files are loaded only when their topic applies: implementation patterns for REST code, safety guidance for writes, event integration guidance for webhooks or WebSockets, and Terraform guidance for declarative workflows.
@@ -111,11 +111,36 @@ Commands in this README use `python`. If that command is unavailable, try `pytho
 Copy or clone this directory as `mist-api` inside the skills folder used by your assistant. For a personal Claude Code skill:
 
 ```bash
-mkdir -p ~/.claude/skills
-cp -R mist-api ~/.claude/skills/mist-api
+mkdir -p ~/.claude/skills/mist-api
+git -C mist-api archive HEAD | tar -x -C ~/.claude/skills/mist-api
 ```
 
 For a project-only Claude Code skill, use `.claude/skills/mist-api`. Other Agent Skills-compatible assistants use their corresponding skill directory.
+
+Share a tagged GitHub source archive or `git archive HEAD`, not a copy of a used
+working folder. Archives include tracked files only; review them before sharing.
+Do not include `.env`, virtual environments, downloaded caches, CSV exports,
+Terraform state, or rollback/pending recovery records.
+
+### Environment variables
+
+Use an isolated environment (`python -m venv .venv`) for dependencies. Activate it
+using your platform's Python instructions before installing requirements.
+
+| Variable | Used by | Meaning |
+| --- | --- | --- |
+| `MIST_API_TOKEN` | REST examples | Required secret API token; never paste it into chat or commit it |
+| `MIST_BASE_URL` | REST examples | Optional official regional HTTPS origin ending in `/api/v1` |
+| `ORG_ID` | Site listing / CSV export | Organization identifier |
+| `TARGET_SITE_NAME`, `OUTPUT_CSV` | CSV export | Site lookup name and optional output path |
+| `SITE_ID`, `WLAN_ID` | WLAN example | Explicit target identifiers |
+| `WEBHOOK_SHARED_SECRET` | Webhook receiver | Required webhook HMAC secret |
+| `PORT`, `MAX_CONTENT_LENGTH_BYTES` | Webhook receiver | Optional listen port and body-size limit |
+| `MIST_OPENAPI_PATH` | Documentation tools | Optional absolute cache path outside the installation |
+
+The webhook example is not a production service: connection admission, inactivity
+timeouts, and total connection deadlines limit resource use but do not provide TLS,
+durable processing, replay protection, or production rate limiting.
 
 ### Download the API reference manual
 
@@ -172,6 +197,8 @@ python -m pytest -q
 ruff check .
 ruff format --check .
 bandit -q -r scripts examples
+pip-audit -r requirements-dev.txt
+python tools/check_secrets.py
 python path/to/skill-creator/scripts/quick_validate.py .
 ```
 
@@ -184,3 +211,6 @@ User-facing documentation changes are listed in [CHANGELOG.md](CHANGELOG.md).
 ## License
 
 Authored project files are available under the [MIT License](LICENSE). Juniper content is not included under that license.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for changes and [SECURITY.md](SECURITY.md)
+for private vulnerability reporting.

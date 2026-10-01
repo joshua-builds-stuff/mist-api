@@ -17,19 +17,28 @@ from __future__ import annotations
 
 import argparse
 import copy
+import heapq
 import json
 import re
 import sys
 from dataclasses import dataclass, field
+from contextvars import ContextVar
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
 try:
-    from .spec_cache import MAX_SPEC_BYTES, SpecValidationError, validate_document
+    from .spec_cache import (
+        MAX_SPEC_BYTES,
+        SpecValidationError,
+        read_json_document,
+        validate_document,
+    )
 except ImportError:  # Direct execution: ``python scripts/query_spec.py``.
     from spec_cache import (  # type: ignore[no-redef]
         MAX_SPEC_BYTES,
         SpecValidationError,
+        read_json_document,
         validate_document,
     )
 
@@ -42,6 +51,8 @@ MAX_REF_SUMMARY_DEPTH = 4
 MAX_REF_SUMMARY_BRANCHES = 5
 MAX_EXPANSION_NODES = 2_500
 MAX_EXPANSION_PROPERTIES = 1_200
+MAX_TRAVERSAL_NODES = 10_000
+MAX_STRUCTURAL_DEPTH = 64
 
 _SENSITIVE_NAME = re.compile(
     r"(?:^|[_-])(?:api[_-]?key|authorization|community|cookie|credential|passphrase|"
@@ -52,6 +63,56 @@ _SENSITIVE_NAME = re.compile(
 
 class QueryError(Exception):
     """A concise, user-facing query failure."""
+
+
+@dataclass
+class _Traversal:
+    nodes: int = 0
+    depth: int = 0
+    cache: dict[tuple[Any, ...], Any] = field(default_factory=dict)
+
+
+_traversal: ContextVar[_Traversal | None] = ContextVar("schema_traversal", default=None)
+
+
+def _bounded_traversal(function):
+    """Share limits across nested resolution; memoize property DAG lookups."""
+
+    @wraps(function)
+    def bounded(*args, **kwargs):
+        state = _traversal.get()
+        token = None
+        if state is None:
+            state = _Traversal()
+            token = _traversal.set(state)
+        try:
+            state.nodes += 1
+            if state.nodes > MAX_TRAVERSAL_NODES or state.depth >= MAX_STRUCTURAL_DEPTH:
+                raise QueryError("Schema traversal exceeds resource limits")
+            key = None
+            if function.__name__ == "_find_schema_property":
+                seen = (
+                    args[3] if len(args) > 3 else kwargs.get("seen_refs", frozenset())
+                )
+                spec = args[0] if args else kwargs["spec"]
+                schema = args[1] if len(args) > 1 else kwargs["schema"]
+                requested = args[2] if len(args) > 2 else kwargs["requested_name"]
+                key = (id(spec), id(schema), requested, seen)
+                if key in state.cache:
+                    return state.cache[key]
+            state.depth += 1
+            try:
+                result = function(*args, **kwargs)
+            finally:
+                state.depth -= 1
+            if key is not None:
+                state.cache[key] = result
+            return result
+        finally:
+            if token is not None:
+                _traversal.reset(token)
+
+    return bounded
 
 
 @dataclass
@@ -123,13 +184,7 @@ def _resolve_spec_path(explicit: str | None) -> Path:
 
 def load_spec(path: Path) -> dict[str, Any]:
     try:
-        if path.stat().st_size > MAX_SPEC_BYTES:
-            raise QueryError(
-                f"OpenAPI spec exceeds the {MAX_SPEC_BYTES}-byte size limit: "
-                f"{_display_path(path)}"
-            )
-        with path.open("r", encoding="utf-8") as handle:
-            spec = json.load(handle)
+        spec = read_json_document(path, max_bytes=MAX_SPEC_BYTES)
     except FileNotFoundError as exc:
         raise QueryError(f"OpenAPI spec not found: {_display_path(path)}") from exc
     except json.JSONDecodeError as exc:
@@ -137,8 +192,8 @@ def load_spec(path: Path) -> dict[str, Any]:
             f"Malformed OpenAPI JSON: {_display_path(path)} "
             f"(line {exc.lineno}, column {exc.colno})"
         ) from exc
-    except QueryError:
-        raise
+    except SpecValidationError as exc:
+        raise QueryError(f"Could not load OpenAPI spec: {exc}") from exc
     except (OSError, UnicodeError) as exc:
         raise QueryError(
             f"Could not read OpenAPI spec: {_display_path(path)} ({exc})"
@@ -189,7 +244,8 @@ def cmd_find(spec: dict[str, Any], args: argparse.Namespace) -> CommandOutput:
     """Search paths, summaries, descriptions, operation IDs, and tags."""
     terms = args.term.casefold().split()
     normalized_query = re.sub(r"[^a-z0-9]", "", args.term.casefold())
-    matches: list[tuple[int, int, str, str, str, bool]] = []
+    matches: list[tuple[Any, tuple[int, int, str, str, str, bool]]] = []
+    total_matches = 0
     for path, path_item in sorted(spec.get("paths", {}).items()):
         if not isinstance(path_item, dict):
             continue
@@ -224,28 +280,40 @@ def cmd_find(spec: dict[str, Any], args: argparse.Namespace) -> CommandOutput:
             )
             if normalized_query and normalized_query == normalized_id:
                 score += 100
-            matches.append(
-                (
-                    score,
-                    len(path),
-                    method,
-                    path,
-                    detail,
-                    bool(operation.get("deprecated")),
-                )
+            total_matches += 1
+            match = (
+                score,
+                len(path),
+                method,
+                path,
+                detail,
+                bool(operation.get("deprecated")),
             )
+            # Keep the best N; the heap root is the worst retained rank.
+            rank = (
+                score,
+                -len(path),
+                tuple(-ord(c) for c in path),
+                tuple(-ord(c) for c in method),
+            )
+            heapq.heappush(matches, (rank, match))
+            if len(matches) > args.limit:
+                heapq.heappop(matches)
 
     if not matches:
         return CommandOutput(f"No paths matching '{args.term}'")
-    matches.sort(key=lambda item: (-item[0], item[1], item[3], item[2]))
+    ordered = sorted(
+        (item for _, item in matches),
+        key=lambda item: (-item[0], item[1], item[3], item[2]),
+    )
     lines = []
-    for _score, _length, method, path, detail, deprecated in matches[: args.limit]:
+    for _score, _length, method, path, detail, deprecated in ordered:
         marker = " [DEPRECATED]" if deprecated else ""
         suffix = f"  - {detail}" if detail else ""
         lines.append(f"{method.upper():<7} {path}{marker}{suffix}")
-    if len(matches) > args.limit:
+    if total_matches > args.limit:
         lines.append(
-            f"... ({len(matches) - args.limit} more; raise --limit to show them)"
+            f"... ({total_matches - args.limit} more; raise --limit to show them)"
         )
     return CommandOutput("\n".join(lines))
 
@@ -533,6 +601,7 @@ def _resolve_pointer(document: Any, pointer: str) -> Any:
     return value
 
 
+@_bounded_traversal
 def _resolve_object_ref(
     spec: dict[str, Any], value: Any, seen: frozenset[str] = frozenset()
 ) -> dict[str, Any]:
@@ -575,6 +644,7 @@ _UPPER_BOUND_KEYWORDS = frozenset(
 _ANNOTATION_KEYWORDS = frozenset({"title", "description", "example", "examples"})
 
 
+@_bounded_traversal
 def _find_schema_property(
     spec: dict[str, Any],
     schema: Any,
@@ -591,6 +661,22 @@ def _find_schema_property(
         return None
 
     found: list[_PropertyLookup] = []
+
+    required = schema.get("required")
+    if isinstance(required, list):
+        required_name = next(
+            (
+                name
+                for name in required
+                if isinstance(name, str)
+                and name.casefold() == requested_name.casefold()
+            ),
+            None,
+        )
+        if required_name is not None:
+            # Required constraints can live in a different allOf/ref sibling
+            # from the property definition. An empty schema means unconstrained.
+            found.append(_PropertyMatch(required_name, {}, True))
 
     properties = schema.get("properties")
     if isinstance(properties, dict):
@@ -710,6 +796,7 @@ def _property_variants(
     return _PropertyVariants(keyword, discriminator, entries)
 
 
+@_bounded_traversal
 def _combine_property_lookups(
     spec: dict[str, Any], first: _PropertyLookup, second: _PropertyLookup
 ) -> _PropertyLookup:
@@ -852,6 +939,7 @@ def _expansion_budget() -> ExpansionBudget:
     )
 
 
+@_bounded_traversal
 def _expand_schema(
     spec: dict[str, Any],
     schema: Any,
@@ -1031,6 +1119,7 @@ def _expand_schema_fields(
     return result
 
 
+@_bounded_traversal
 def _bounded_copy(value: Any, budget: ExpansionBudget) -> Any:
     """Copy metadata into a small JSON-safe form under the node budget."""
     if not budget.claim_node():
@@ -1538,14 +1627,18 @@ def main(argv: list[str] | None = None) -> int:
             "tag": cmd_tag,
         }
         output = dispatch[args.cmd](spec, args)
+        if output.is_json:
+            rendered = _render_json(
+                output.value, args.max_chars, output.truncation_reasons
+            )
+        else:
+            rendered = _render_text(output.value, args.max_chars)
     except QueryError as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 2
-
-    if output.is_json:
-        rendered = _render_json(output.value, args.max_chars, output.truncation_reasons)
-    else:
-        rendered = _render_text(output.value, args.max_chars)
+    except RecursionError:
+        sys.stderr.write("error: Schema traversal exceeds parser or nesting limits\n")
+        return 2
     sys.stdout.write(rendered)
     return 0
 

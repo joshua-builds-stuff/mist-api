@@ -8,3 +8,23 @@ venv/
 mist_site_devices.csv
 wlan_rollback.json
 *.tmp
+
+# Credentials and tenant-derived artifacts must not enter a release.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfplan
+*.csv
+*rollback*.json
+*.pending.json
+.coverage
+coverage.xml
+htmlcov/

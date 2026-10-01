@@ -48,6 +48,16 @@ python scripts/query_spec.py tag "Sites Devices"
 
 Use `find` before increasing limits. Prefer `schema --property` when only one field is material. Keep `--max-depth` and `--max-chars` at their defaults unless necessary.
 
+All schema lookup, reference resolution and expansion share a 10,000-visit
+traversal limit and a 64-level structural nesting cap. Shared property lookups
+are memoized within one traversal so repeated references do not cause exponential
+work. Exceeding these limits returns a concise error rather than partial claims
+about a property. The existing expansion/output budgets still apply; `--max-depth`
+controls ref expansion, not permission for arbitrary structural nesting. Both
+cache validation and queries read at most 64 MiB plus one detection byte, even if
+the file changes during the read. `find` keeps only the best `--limit` results
+while counting all matches.
+
 ### `schema --property`
 
 `schema NAME --property FIELD` returns one field from a component schema. The match is case-insensitive, and `property` uses the spelling stored on the schema. Two properties that differ only by letter case are an error (`ambiguous by letter case`). A field that is absent from the component is an error (`has no property named`).
@@ -59,6 +69,9 @@ A single answer also includes `required` (boolean) and `schema` (the expanded fi
 `allOf` branches all apply to the same instance, so their matches are merged into that one answer:
 
 - `required` is true when any branch requires the field.
+- A required-only branch or a required array beside `$ref` still applies even
+  when it does not repeat the property's definition. A required field with no
+  explicit property schema is reported with an unconstrained `{}` schema.
 - A `required` array inside the field schema is the union of the branch arrays.
 - `type` and `enum` keep the values shared by every branch that sets them. One shared `type` is a string. Several shared types stay a list, in the first branch's order.
 - Lower bounds (`minimum`, `exclusiveMinimum`, `minLength`, `minItems`, `minProperties`) keep the larger number. Upper bounds (`maximum`, `exclusiveMaximum`, `maxLength`, `maxItems`, `maxProperties`) keep the smaller number.
