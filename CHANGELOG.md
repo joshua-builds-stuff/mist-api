@@ -2,6 +2,8 @@
 
 ## Unreleased — public-release hardening
 
+- Bound rollback-file reads even when a file grows after the size check, and
+  report JSON parser-limit failures without a traceback or private content.
 - Treat HTTP 5xx/408, redirects and transport failures as uncertain WLAN write
   outcomes. Verify without replaying the PUT; if verification also fails, save
   a separate private pending recovery record without replacing confirmed rollback.
