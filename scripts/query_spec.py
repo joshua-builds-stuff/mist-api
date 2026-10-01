@@ -274,9 +274,7 @@ def cmd_show(spec: dict[str, Any], args: argparse.Namespace) -> CommandOutput:
         for parameter in parameters:
             schema = parameter.get("schema")
             schema = schema if isinstance(schema, dict) else {}
-            parameter_type = schema.get(
-                "type", _ref_name(schema.get("$ref", "")) or "?"
-            )
+            parameter_type = _parameter_type_label(spec, schema)
             required = "required" if parameter.get("required") else "optional"
             description = (
                 f": {_one_line(parameter['description'], 80)}"
@@ -1123,6 +1121,56 @@ def _schema_ref_summary(schema: Any, depth: int = 0) -> str:
         if item_name:
             return f"array[{item_name}]"
     return ""
+
+
+def _parameter_type_label(spec: dict[str, Any], schema: dict[str, Any]) -> str:
+    """Label a parameter schema, looking through $ref and allOf/anyOf/oneOf."""
+    ref = schema.get("$ref")
+    if isinstance(ref, str) and ref:
+        return _parameter_ref_label(spec, ref)
+    for keyword in ("allOf", "anyOf", "oneOf"):
+        branches = schema.get(keyword)
+        if not isinstance(branches, list):
+            continue
+        refs = [
+            branch["$ref"]
+            for branch in branches
+            if isinstance(branch, dict)
+            and isinstance(branch.get("$ref"), str)
+            and branch["$ref"]
+        ]
+        if len(refs) == 1:
+            return _parameter_ref_label(spec, refs[0])
+        if refs:
+            shown = [
+                _parameter_ref_label(spec, ref)
+                for ref in refs[:MAX_REF_SUMMARY_BRANCHES]
+            ]
+            more = len(refs) - len(shown)
+            extra = f"; +{more} more" if more else ""
+            return f"{keyword}[{'; '.join(shown)}{extra}]"
+    if schema.get("type"):
+        return _text(schema["type"])
+    for keyword in ("allOf", "anyOf", "oneOf"):
+        branches = schema.get(keyword)
+        if isinstance(branches, list):
+            for branch in branches:
+                if isinstance(branch, dict) and branch.get("type"):
+                    return _text(branch["type"])
+    return "?"
+
+
+def _parameter_ref_label(spec: dict[str, Any], ref: str) -> str:
+    resolved = _resolve_object_ref(spec, {"$ref": ref})
+    parts = [_ref_name(ref)]
+    if resolved.get("type"):
+        parts.append(_text(resolved["type"]))
+    enum = resolved.get("enum")
+    if isinstance(enum, list) and enum:
+        parts.append(f"enum[{', '.join(_text(value) for value in enum)}]")
+    if "const" in resolved:
+        parts.append(f"const={_text(resolved['const'])}")
+    return " ".join(parts)
 
 
 def _schema_label(schema: dict[str, Any]) -> str:
