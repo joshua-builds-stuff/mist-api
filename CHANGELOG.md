@@ -2,6 +2,15 @@
 
 ## 2026-10-01 — **minor**
 
+Documentation sync for engineering changes #18 and #19, already merged to `main`. No install, upgrade, environment, or prerequisite changes. No security-facing behavior change.
+
+- `scripts/query_spec.py show` labels a parameter that is a `$ref`, including a single `$ref` inside `allOf`, `anyOf`, or `oneOf`. The label is the component name, its `type`, and `enum[...]` or `const=` when the component defines them. A required path parameter such as `band` prints `dot11_band string enum[24, 5, 5-dedicated, 5-selectable, 6, 6-dedicated, 6-selectable]` instead of `?`.
+- Several component refs on one parameter are listed as `allOf[...]`, `anyOf[...]`, or `oneOf[...]`, joined with `; `, at most five labels, then `; +N more`. A parameter with a plain `type` is still that type. Request-body and response schema labels are unchanged.
+- `MistClient.request` and `request_json` accept a JSON object or a JSON array as `json_body`. A mapping is still shallow-copied. An array is shallow-copied and sent unchanged, including a list of two-character strings. A string, bytes value, set, or number raises `ValueError` (`Mist API json_body must be a JSON object or array`) before any request is sent.
+- Object bodies, including the WLAN stub PUT, are unchanged. Pagination, retries, authentication, and host checks are unchanged.
+
+## 2026-10-01 — **minor**
+
 Documentation sync for engineering change #16, already merged to `main`. No install, upgrade, environment, or prerequisite changes. No security-facing behavior change.
 
 - `scripts/query_spec.py schema NAME --property FIELD` merges `allOf` constraints into one answer. `required` is true when any branch requires the field. `type` and `enum` keep the shared values. Numeric bounds keep the tighter limit. A constraint that cannot be combined stays on the field schema under `allOf`.

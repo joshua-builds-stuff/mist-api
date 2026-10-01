@@ -93,7 +93,30 @@ A property declared on the component beside a `oneOf` or `anyOf` is merged into 
 }
 ```
 
-The illustration above is the command's JSON shape, with sample labels. It is not a dump of the live Mist `deviceprofile` schema. `show` continues to print schema names and leaves field expansion to `schema`.
+The illustration above is the command's JSON shape, with sample labels. It is not a dump of the live Mist `deviceprofile` schema. `show` still leaves field expansion to `schema`. Parameter lines include the component name and any `enum` or `const`; the format is under Parameter labels in `show` below. `schema --property` output is unchanged.
+
+### Parameter labels in `show`
+
+Each parameter is one line. The text between the location and `required` or `optional` is the schema label:
+
+```text
+  - band (path, dot11_band string enum[24, 5, 5-dedicated, 5-selectable, 6, 6-dedicated, 6-selectable], required): 802.11 Band
+  - site_id (path, site_id string, required)
+  - limit (query, integer, optional)
+  - either (query, oneOf[a string enum[x]; b integer const=7], optional)
+```
+
+The `band` line is the label for Mist's `dot11_band` path parameter, whose schema is `allOf` of a `$ref` plus a description. The `either` line shows the multi-ref shape; `a` and `b` there are sample component names, not a live Mist operation.
+
+- A top-level `$ref` is the component name, the last segment of the `$ref`. When that component resolves, the label adds its `type`, then `enum[v1, v2]` when `enum` is a non-empty list, then `const=value` when `const` is set.
+- One `$ref` inside `allOf`, `anyOf`, or `oneOf` uses that same component label. The keyword is not printed. Extra branches that are only a description are ignored, so `allOf: [{$ref}, {description}]` prints the component, type, and enum instead of `?`.
+- Two or more `$ref`s under the same keyword are `{keyword}[{label}; {label}]`. At most five labels are shown. Further refs are a suffix `; +N more`.
+- The first of `allOf`, `anyOf`, and `oneOf` that contains a `$ref` supplies the label. Later keywords on that schema are not combined into it.
+- A schema with its own `type` and no `$ref` prints that type, such as `integer` or `array`. The parameter label does not walk `items`.
+- If there is still no label, the first composed branch that has a `type` supplies it.
+- Otherwise the label is `?`.
+
+`required` or `optional` follows the label. A description, when present, is appended after a colon. Use the printed `enum` or `const` as the allowed parameter value. Pass the component name to `schema` when nested fields matter. These lines do not expand properties.
 
 ### Schema names in `show`
 
@@ -111,7 +134,7 @@ responses:
   204: Empty
 ```
 
-A request body with no named component falls back to the schema `type`, or to `inline schema`. A response with no named component keeps only its status and description. Pass the printed name to `schema` when the fields matter. `show` does not expand properties.
+A request body with no named component falls back to the schema `type`, or to `inline schema`. A response with no named component keeps only its status and description. Pass the printed name to `schema` when the fields matter. `show` does not expand properties. These request and response labels are separate from parameter labels: a body stays `allOf[wlan]`, `oneOf[a, b]`, or `array[site]`, while a parameter line uses `name type enum[...]` or `oneOf[name type ...; name type ...]`. When the body label is `array` or `array[...]`, the Python client accepts that body as a JSON array; see [implementation-patterns.md](implementation-patterns.md).
 
 ### Oversized `schema` and `operation` JSON
 

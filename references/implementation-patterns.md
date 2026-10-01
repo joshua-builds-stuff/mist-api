@@ -15,6 +15,27 @@ Use `examples/mist_client.py` as the reference implementation for generated Pyth
 - Do not automatically retry POST, PUT, PATCH, or DELETE unless current API evidence proves replay safety.
 - Raise errors containing status, not response bodies or secret-bearing payloads.
 
+## JSON request bodies
+
+`MistClient.request` and `MistClient.request_json` take `json_body` as `None`, a mapping, or a non-string sequence.
+
+- `None` sends no JSON body.
+- A mapping is shallow-copied with `dict()` and sent as a JSON object. Later changes to the caller's mapping do not change that copy. Object bodies, including the WLAN stub's `{"ssid": ...}` PUT, keep this behavior.
+- A list, tuple, or other sequence that is not `str`, `bytes`, or `bytearray` is shallow-copied with `list()` and sent as a JSON array. A list of two-character strings stays an array. Arrays of strings or objects are both forwarded this way.
+- Any other value, including a string, bytes, a set, or a number, raises `ValueError` with the message `Mist API json_body must be a JSON object or array`. No HTTP request is sent.
+
+When `show` labels the request body as `array` or `array[...]`, pass a list. Confirm the path and the item schema with `show` or `operation` before calling. An operation whose cached spec body is an array of strings, such as org inventory claim, is called like this:
+
+```python
+client.request_json(
+    "POST",
+    "/orgs/ORG_ID/inventory",
+    json_body=["CLAIM_CODE", "CLAIM_CODE"],
+)
+```
+
+Pagination, retries, authentication, and host checks are unchanged.
+
 ## Pagination
 
 Assume list operations are paginated unless the current operation proves otherwise.
