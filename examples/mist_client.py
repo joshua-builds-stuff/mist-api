@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import random
 import time
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -44,6 +44,22 @@ logger = logging.getLogger("mist-client")
 
 class MistAPIError(RuntimeError):
     """A deliberately secret-free Mist API failure."""
+
+
+def _json_payload(
+    json_body: Mapping[str, Any] | Sequence[Any] | None,
+) -> dict[str, Any] | list[Any] | None:
+    """Shallow-copy a JSON object or array body; reject every other shape."""
+
+    if json_body is None:
+        return None
+    if isinstance(json_body, Mapping):
+        return dict(json_body)
+    if isinstance(json_body, Sequence) and not isinstance(
+        json_body, (str, bytes, bytearray)
+    ):
+        return list(json_body)
+    raise ValueError("Mist API json_body must be a JSON object or array")
 
 
 def api_path_segment(value: str) -> str:
@@ -209,13 +225,14 @@ class MistClient:
         path: str,
         *,
         params: Mapping[str, Any] | None = None,
-        json_body: Mapping[str, Any] | None = None,
+        json_body: Mapping[str, Any] | Sequence[Any] | None = None,
     ) -> requests.Response:
         """Send one API request without exposing response bodies in errors."""
 
         normalized_method = method.upper()
         safe_path = _validate_api_path(path)
         url = f"{self.base_url}{safe_path}"
+        payload = _json_payload(json_body)
         may_retry = self._can_retry(normalized_method)
         retry_count = self.max_retries if may_retry else 0
 
@@ -230,7 +247,7 @@ class MistClient:
                         "Content-Type": "application/json",
                     },
                     params=dict(params) if params is not None else None,
-                    json=dict(json_body) if json_body is not None else None,
+                    json=payload,
                     timeout=self.timeout,
                     allow_redirects=False,
                 )
@@ -284,7 +301,7 @@ class MistClient:
         path: str,
         *,
         params: Mapping[str, Any] | None = None,
-        json_body: Mapping[str, Any] | None = None,
+        json_body: Mapping[str, Any] | Sequence[Any] | None = None,
     ) -> Any:
         response = self.request(method, path, params=params, json_body=json_body)
         try:
