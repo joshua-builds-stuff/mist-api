@@ -2,6 +2,27 @@
 
 ## 2026-10-03 — minor
 
+Documentation verification run, project versioning, and an optional update
+notice. No change to API behavior, authentication, or cached-spec handling.
+
+- Verify the documented install flow (tracked-source archive extraction), the
+  maintainer checks, the offline cache check's no-cache exit, and every script
+  and example entry point inside a disposable sandbox clone: 13 commands, all
+  passing, with network access limited to loopback.
+- Add a TL;DR, a Mermaid workflow diagram, a table of contents, and a
+  documentation revision stamp to the README.
+- Remove an authorship attribution line from AUDIT.md per documentation
+  hygiene policy, and ignore `.wtfm/` documentation-revision state.
+- Add a root `VERSION` file (1.0.0). After a successful explicit
+  `refresh_openapi.py` download, the tool makes one bounded HTTPS request
+  (pinned host, no redirects, 5-second timeout, 64-byte read) for the
+  published `VERSION` and prints a one-line `NOTE:` when a newer skill
+  version exists. Only validated `x.y.z` values are compared or printed,
+  `--offline` still performs no network access, every failure is silent,
+  and `MIST_SKILL_UPDATE_CHECK=0` disables the check.
+
+## 2026-10-03 — minor
+
 Token-efficiency pass over the assistant-loaded documentation. No install,
 upgrade, environment, API, or security-facing behavior change.
 

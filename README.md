@@ -1,37 +1,42 @@
 # Unofficial API Integration Skill for Juniper Mist
 
-An unofficial assistant skill for working with the Juniper Mist API. It helps an AI coding assistant create, review, troubleshoot, and safely plan Mist automation.
+> Grounds an AI coding assistant's Juniper Mist API work in the official OpenAPI specification and tested, safety-first example scripts.
+
+**TL;DR:** Install this repository as the `mist-api` skill for an Agent Skills-compatible assistant, run `python scripts/refresh_openapi.py` once to download Juniper's API reference into a local cache, then ask for Mist API explanations, scripts, or change plans. The assistant verifies endpoints before writing code, and live changes require explicit confirmation.
+
+<!-- wtfm:revision -->
+> Documents **v1.0.0** (`c06b2a0`) · Doc revision **2** · Updated 2026-10-03
+> Latest change: Verified docs in a sandbox; added versioning and an opt-out update notice.
+<!-- /wtfm:revision -->
 
 This project is independent and is not affiliated with, endorsed by, or sponsored by Juniper Networks or Hewlett Packard Enterprise (HPE).
+
+- [How the skill works](#how-the-skill-works)
+  - [When each support script is engaged](#when-each-support-script-is-engaged)
+  - [When the example scripts are engaged](#when-the-example-scripts-are-engaged)
+- [Before first use](#before-first-use)
+  - [Install the skill](#install-the-skill)
+  - [Environment variables](#environment-variables)
+  - [Download the API reference manual](#download-the-api-reference-manual)
+- [Safety rules built into the skill](#safety-rules-built-into-the-skill)
+- [Folder map](#folder-map)
+- [Maintainer checks](#maintainer-checks)
+- [License](#license)
 
 ## How the skill works
 
 `SKILL.md` controls the workflow. When a Mist task requires exact endpoint, field, authentication, or pagination details, the assistant engages the supporting scripts in this order:
 
-```text
-Mist API request
-    |
-    v
-SKILL.md determines the scope and information needed
-    |
-    v
-refresh_openapi.py --offline checks for a valid cached API specification
-    |
-    +-- Cache missing or freshness matters --> refresh_openapi.py downloads it
-    |
-    v
-query_spec.py searches the cached specification
-    |
-    +-- find --> locate possible endpoints
-    +-- show --> inspect one endpoint
-    +-- operation/schema --> inspect request and response fields
-    +-- tag/tags --> browse related endpoint groups
-    |
-    v
-The assistant reads the relevant example or reference file
-    |
-    v
-The assistant produces the requested explanation, code, or change plan
+```mermaid
+flowchart TD
+    A[Mist API request] --> B[SKILL.md determines the scope<br>and information needed]
+    B --> C{Valid cached API<br>specification?}
+    C -- missing or freshness matters --> D[refresh_openapi.py<br>downloads it]
+    C -- usable cache --> E[query_spec.py searches<br>the cached specification]
+    D --> E
+    E --> F[find / show / operation /<br>schema / tag lookups]
+    F --> G[The assistant reads the relevant<br>example or reference file]
+    G --> H[Explanation, code,<br>or change plan]
 ```
 
 The scripts under `scripts/` inspect API documentation only. They do not connect to a Mist tenant or change its configuration.
@@ -137,6 +142,7 @@ using your platform's Python instructions before installing requirements.
 | `WEBHOOK_SHARED_SECRET` | Webhook receiver | Required webhook HMAC secret |
 | `PORT`, `MAX_CONTENT_LENGTH_BYTES` | Webhook receiver | Optional listen port and body-size limit |
 | `MIST_OPENAPI_PATH` | Documentation tools | Optional absolute cache path outside the installation |
+| `MIST_SKILL_UPDATE_CHECK` | Refresh tool | Optional; set to `0` to disable the post-download skill update notice |
 
 The webhook example is not a production service: connection admission, inactivity
 timeouts, and total connection deadlines limit resource use but do not provide TLS,
@@ -157,6 +163,12 @@ Later, you can check which cached version is available without downloading or ch
 ```bash
 python scripts/refresh_openapi.py --offline
 ```
+
+After a successful download, the tool also makes one small HTTPS request to this
+project's repository to compare your installed skill `VERSION` with the published
+one, and prints a single `NOTE:` line when an update exists. The check never runs
+with `--offline`, never retries, stays silent on any failure, and
+`MIST_SKILL_UPDATE_CHECK=0` disables it.
 
 Automation and test environments can choose a different cache file with `MIST_OPENAPI_PATH`. Use of downloaded Juniper material is subject to Juniper's applicable terms; see [NOTICE](NOTICE).
 
