@@ -28,3 +28,8 @@ credentials*.json
 .coverage
 coverage.xml
 htmlcov/
+
+# Downloaded vendor documentation belongs in the external user cache.
+mist-api-openapi*.json
+mist.openapi.yaml
+mist.openapi.yml

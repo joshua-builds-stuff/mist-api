@@ -1,8 +1,8 @@
-# Mist API Agent Skill
+# Unofficial API Integration Skill for Juniper Mist
 
 An unofficial assistant skill for working with the Juniper Mist API. It helps an AI coding assistant create, review, troubleshoot, and safely plan Mist automation.
 
-This project is independent and is not affiliated with, endorsed by, or sponsored by Juniper Networks.
+This project is independent and is not affiliated with, endorsed by, or sponsored by Juniper Networks or Hewlett Packard Enterprise (HPE).
 
 ## How the skill works
 
@@ -214,3 +214,8 @@ Authored project files are available under the [MIT License](LICENSE). Juniper c
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for changes and [SECURITY.md](SECURITY.md)
 for private vulnerability reporting.
+
+The project license does not grant rights to vendor documentation, trademarks,
+logos, API services, or tenant data. Do not bundle downloaded specifications or
+vendor manuals in forks, releases, or shared working folders. See [NOTICE](NOTICE)
+for the vendor-material boundary and applicable legal-notice links.

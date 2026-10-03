@@ -1,5 +1,14 @@
 # Revision history
 
+## 2026-10-02 — publication presentation
+
+- Make the README, skill heading, and assistant display name explicitly unofficial
+  without changing the `mist-api` skill identifier or installation path.
+- Include HPE in the non-affiliation disclaimer and clarify that the project MIT
+  license does not license vendor documentation, logos, trademarks, or API services.
+- Ignore common downloaded Mist specification filenames and reiterate that vendor
+  exports must not be bundled with shared source or releases.
+
 ## Unreleased — public-release hardening
 
 - Bound rollback-file reads even when a file grows after the size check, and
