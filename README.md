@@ -1,37 +1,37 @@
 # Unofficial API Integration Skill for Juniper Mist
 
-An unofficial assistant skill for working with the Juniper Mist API. It helps an AI coding assistant create, review, troubleshoot, and safely plan Mist automation.
+> Grounds an AI coding assistant's Juniper Mist API work in the official OpenAPI specification and tested, safety-first example scripts.
+
+**TL;DR:** Install this repository as the `mist-api` skill for an Agent Skills-compatible assistant, run `python scripts/refresh_openapi.py` once to download Juniper's API reference into a local cache, then ask for Mist API explanations, scripts, or change plans. The assistant verifies endpoints before writing code, and live changes require explicit confirmation.
 
 This project is independent and is not affiliated with, endorsed by, or sponsored by Juniper Networks or Hewlett Packard Enterprise (HPE).
+
+- [How the skill works](#how-the-skill-works)
+  - [When each support script is engaged](#when-each-support-script-is-engaged)
+  - [When the example scripts are engaged](#when-the-example-scripts-are-engaged)
+- [Before first use](#before-first-use)
+  - [Install the skill](#install-the-skill)
+  - [Environment variables](#environment-variables)
+  - [Download the API reference manual](#download-the-api-reference-manual)
+- [Safety rules built into the skill](#safety-rules-built-into-the-skill)
+- [Folder map](#folder-map)
+- [Maintainer checks](#maintainer-checks)
+- [License](#license)
 
 ## How the skill works
 
 `SKILL.md` controls the workflow. When a Mist task requires exact endpoint, field, authentication, or pagination details, the assistant engages the supporting scripts in this order:
 
-```text
-Mist API request
-    |
-    v
-SKILL.md determines the scope and information needed
-    |
-    v
-refresh_openapi.py --offline checks for a valid cached API specification
-    |
-    +-- Cache missing or freshness matters --> refresh_openapi.py downloads it
-    |
-    v
-query_spec.py searches the cached specification
-    |
-    +-- find --> locate possible endpoints
-    +-- show --> inspect one endpoint
-    +-- operation/schema --> inspect request and response fields
-    +-- tag/tags --> browse related endpoint groups
-    |
-    v
-The assistant reads the relevant example or reference file
-    |
-    v
-The assistant produces the requested explanation, code, or change plan
+```mermaid
+flowchart TD
+    A[Mist API request] --> B[SKILL.md determines the scope<br>and information needed]
+    B --> C{Valid cached API<br>specification?}
+    C -- missing or freshness matters --> D[refresh_openapi.py<br>downloads it]
+    C -- usable cache --> E[query_spec.py searches<br>the cached specification]
+    D --> E
+    E --> F[find / show / operation /<br>schema / tag lookups]
+    F --> G[The assistant reads the relevant<br>example or reference file]
+    G --> H[Explanation, code,<br>or change plan]
 ```
 
 The scripts under `scripts/` inspect API documentation only. They do not connect to a Mist tenant or change its configuration.

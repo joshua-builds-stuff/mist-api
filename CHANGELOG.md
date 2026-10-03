@@ -2,6 +2,20 @@
 
 ## 2026-10-03 — minor
 
+Documentation verification run. No install, upgrade, environment, API, or
+security-facing behavior change.
+
+- Verify the documented install flow (tracked-source archive extraction), the
+  maintainer checks, the offline cache check's no-cache exit, and every script
+  and example entry point inside a disposable sandbox clone: 13 commands, all
+  passing, with network access limited to loopback.
+- Add a TL;DR, a Mermaid workflow diagram, a table of contents, and a
+  documentation revision stamp to the README.
+- Remove an authorship attribution line from AUDIT.md per documentation
+  hygiene policy, and ignore `.wtfm/` documentation-revision state.
+
+## 2026-10-03 — minor
+
 Token-efficiency pass over the assistant-loaded documentation. No install,
 upgrade, environment, API, or security-facing behavior change.
 
