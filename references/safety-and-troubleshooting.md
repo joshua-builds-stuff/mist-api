@@ -23,45 +23,33 @@ For POST, PUT, PATCH, DELETE, template changes, or bulk changes:
 
 Never assume PATCH semantics or that omitted PUT fields are preserved. Never send an entire GET response back as an update without proving every included field is writable and replacement-safe.
 
-Publish or replace a saved rollback record after a read-back shows the intended change, and also when the write succeeded but the verification read cannot be completed. Leave the previous record in place when a rejected write did not apply. Keep the previous record when an uncertain failure is followed by a read that still shows the old value.
+Publish or replace a saved rollback record after a read-back shows the intended change, and also when the write succeeded but the verification read could not be completed. Leave the previous record in place when a rejected write did not apply, and when an uncertain failure is followed by a read that still shows the old value.
 
 ## WLAN SSID example
 
-`examples/update_wlan_stub.py` stays read-only unless `--apply` and `--confirm-target SITE_ID/WLAN_ID` are both present. The PUT body is only `{"ssid": "<proposed SSID>"}`. That PUT is a single attempt.
+`examples/update_wlan_stub.py` stays read-only unless `--apply` and `--confirm-target SITE_ID/WLAN_ID` are both present. The PUT body is only `{"ssid": "<proposed SSID>"}`, sent exactly once.
 
-The rollback file is `--rollback-file` (default `wlan_rollback.json`). The file is written after the PUT, and only when the apply changes the SSID. A dry run leaves it untouched. Before the PUT, the path must not be an existing directory and its parent directory must already exist.
+Rollback file (`--rollback-file`, default `wlan_rollback.json`):
 
-The record contains `version`, `base_url`, `site_id`, `wlan_id`, `before_ssid`, `applied_ssid`, and `created_at`. It omits the rest of the WLAN object. It is stored with owner-only permissions (`0600`) by writing a temporary file in the same directory and replacing the destination.
+- Written after the PUT, and only when the apply changes the SSID; a dry run leaves it untouched. Before the PUT, the path must not be an existing directory and its parent must exist.
+- Contains only `version`, `base_url`, `site_id`, `wlan_id`, `before_ssid`, `applied_ssid`, `created_at`. Stored with owner-only permissions (`0600`) via a same-directory temporary file and atomic replace.
+- Replaced in two cases: the follow-up GET returns the desired SSID (`Update verified.`), or the PUT succeeded but the follow-up GET could not be completed (the command still exits with `SSID was updated but verification could not be completed`; the preview above shows the previous SSID).
+- If the SSID changed but the record cannot be saved, the error is `SSID was updated but the rollback record could not be saved`, and the preview shows the previous SSID.
 
-The new record replaces the previous file in two cases:
+Error classification uses `MistAPIError.status_code`, never message text:
 
-- The follow-up GET returns the desired SSID. The command then prints `Update verified.`
-- The PUT succeeded, and the follow-up GET could not be completed. The command still exits with an error: `SSID was updated but verification could not be completed`. The preview above that error shows the previous SSID.
-
-If the SSID changed and the record cannot be saved, the reported error is `SSID was updated but the rollback record could not be saved`. That same preview shows the previous SSID. This applies both after a confirmed change and after a successful PUT whose verification read failed.
-
-A structured HTTP 4xx error other than 408 is treated as a rejection; the previous
-rollback file is retained. Classification uses `MistAPIError.status_code`, never
-message text. HTTP 5xx, 408, redirects, transport errors and malformed successful
-responses are indeterminate: the server may have applied the change. Read the WLAN
-again without retrying the PUT. No specific Mist backend behavior is assumed.
-
-Any other PUT error may still have been applied. That set is a timeout, a connection error, a chunked-encoding failure, any other request exception, and a 2xx body that was not valid JSON. The script then GETs the WLAN. When that GET shows the desired SSID, the command saves the new record and finishes as a verified update (`Update verified.`). When the SSID is unchanged, the previous file stays and the original PUT error is reported. When the PUT itself succeeded and the follow-up GET returns a different SSID, the previous file stays and verification fails.
-
-When an indeterminate PUT is followed by a failed verification GET, the command
-reports `Write outcome is unknown` and saves `<rollback-file>.pending.json` with
-owner-only permissions. It contains the same minimal before/intended values and
-an `outcome: indeterminate` marker; the confirmed rollback file stays unchanged.
-Do not blindly replay the write. Inspect the live WLAN and reconcile the pending
-record first. Pending records are deliberately rejected by `--rollback`; that
-mode accepts only confirmed records. Pending files are retained for manual review
-and are not automatically deleted after later attempts.
+- A structured HTTP 4xx other than 408 is a rejection; the previous rollback file is retained.
+- HTTP 5xx, 408, redirects, transport errors (timeout, connection error, chunked-encoding failure, other request exceptions), and a 2xx body that was not valid JSON are indeterminate: the server may have applied the change. The script GETs the WLAN again without retrying the PUT and assumes no specific Mist backend behavior.
+  - GET shows the desired SSID → the new record is saved and the update finishes verified.
+  - GET shows the SSID unchanged → the previous file stays; the original PUT error is reported.
+  - PUT succeeded but the GET returns a different SSID → the previous file stays; verification fails.
+- Indeterminate PUT followed by a failed verification GET → the command reports `Write outcome is unknown` and saves `<rollback-file>.pending.json` (owner-only) with the same minimal before/intended values and `outcome: indeterminate`; the confirmed rollback file stays unchanged. Do not blindly replay the write: inspect the live WLAN and reconcile the pending record first. Pending records are rejected by `--rollback` and retained for manual review.
 
 `--rollback FILE` restores `before_ssid` only when the live SSID still equals the record's `applied_ssid`, the site and WLAN ids match, and the selected base URL matches the record. That mode does not write a new rollback file.
 
 ## Sensitive material
 
-Treat WLAN, RADIUS, NAC, SNMP, webhook, and device configuration as potentially secret-bearing.
+Treat WLAN, RADIUS, NAC, SNMP, webhook, and device configuration as potentially secret-bearing:
 
 - Never print full configuration objects by default.
 - Store rollback data with user-only permissions and only the fields required to reverse the change.
@@ -70,7 +58,7 @@ Treat WLAN, RADIUS, NAC, SNMP, webhook, and device configuration as potentially 
 
 ## Troubleshooting order
 
-Check these causes systematically:
+Check causes systematically:
 
 1. Wrong regional cloud or base URL.
 2. Wrong org, site, device, template, or object ID.

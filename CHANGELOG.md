@@ -1,5 +1,20 @@
 # Revision history
 
+## 2026-10-03 — minor
+
+Token-efficiency pass over the assistant-loaded documentation. No install,
+upgrade, environment, API, or security-facing behavior change.
+
+- Compress `SKILL.md` and every file under `references/` while keeping all
+  workflow, safety, evidence, and output-format rules; deep label and merge
+  mechanics now live only in `references/openapi.md`.
+- Simplify the densest README passages into plain language with pointers to
+  the reference files, for readers who are not developers.
+- Add explicit non-developer response guidance to `SKILL.md`: define Mist
+  terms plainly, give copy-paste commands with placeholders, and state where
+  each required value comes from.
+- Record before/after context-size estimates in `AUDIT.md`.
+
 ## 2026-10-02 — publication presentation
 
 - Make the README, skill heading, and assistant display name explicitly unofficial

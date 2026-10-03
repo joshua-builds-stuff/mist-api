@@ -7,7 +7,7 @@ Read this file for Python, cURL, pagination, retries, rate limits, or production
 Use `examples/mist_client.py` as the reference implementation for generated Python scripts. Preserve these properties:
 
 - Validate HTTPS and the destination hostname before constructing an authorization header.
-- Keep tokens in environment variables and never include them in exceptions or logs.
+- Keep tokens in environment variables; never include them in exceptions or logs.
 - Reuse a `requests.Session` for connection pooling.
 - Set a finite connect/read timeout.
 - Retry connection failures, HTTP 429, and transient 5xx responses only for safe reads by default.
@@ -17,14 +17,14 @@ Use `examples/mist_client.py` as the reference implementation for generated Pyth
 
 ## JSON request bodies
 
-`MistClient.request` and `MistClient.request_json` take `json_body` as `None`, a mapping, or a non-string sequence.
+`MistClient.request` and `request_json` take `json_body` as `None`, a mapping, or a non-string sequence:
 
 - `None` sends no JSON body.
-- A mapping is shallow-copied with `dict()` and sent as a JSON object. Later changes to the caller's mapping do not change that copy. Object bodies, including the WLAN stub's `{"ssid": ...}` PUT, keep this behavior.
-- A list, tuple, or other sequence that is not `str`, `bytes`, or `bytearray` is shallow-copied with `list()` and sent as a JSON array. A list of two-character strings stays an array. Arrays of strings or objects are both forwarded this way.
-- Any other value, including a string, bytes, a set, or a number, raises `ValueError` with the message `Mist API json_body must be a JSON object or array`. No HTTP request is sent.
+- A mapping is shallow-copied with `dict()` and sent as a JSON object; later caller changes do not affect the copy. Object bodies, including the WLAN stub's `{"ssid": ...}` PUT, keep this behavior.
+- A list, tuple, or other non-`str`/`bytes`/`bytearray` sequence is shallow-copied with `list()` and sent as a JSON array, including a list of two-character strings. Arrays of strings or objects are both forwarded unchanged.
+- Any other value — string, bytes, set, number — raises `ValueError` (`Mist API json_body must be a JSON object or array`) before any request is sent.
 
-When `show` labels the request body as `array` or `array[...]`, pass a list. Confirm the path and the item schema with `show` or `operation` before calling. An operation whose cached spec body is an array of strings, such as org inventory claim, is called like this:
+When `show` labels the request body `array` or `array[...]`, pass a list. Confirm the path and item schema with `show` or `operation` first. Example for a body that is an array of strings (org inventory claim):
 
 ```python
 client.request_json(
@@ -34,23 +34,18 @@ client.request_json(
 )
 ```
 
-Pagination, retries, authentication, and host checks are unchanged.
+Pagination, retries, authentication, and host checks are unchanged by body shape.
 
 ## Pagination
 
-Assume list operations are paginated unless the current operation proves otherwise.
+Assume list operations are paginated unless the current operation proves otherwise. Verify the operation's pagination parameters and response shape, request an explicit page size, continue until a short or empty page, bound maximum pages or records for unattended automation, and deduplicate stable identifiers if the endpoint can change during traversal. Do not describe a result as "all" when only one page was requested.
 
-1. Verify the operation's pagination parameters and response shape.
-2. Request an explicit page size.
-3. Continue until a short or empty page is returned.
-4. Bound maximum pages or records for unattended automation.
-5. Deduplicate stable identifiers if the endpoint can change during traversal.
+`MistClient.paginate` applies those bounds for `page`/`limit` list endpoints:
 
-Do not describe a result as “all” when only one page was requested.
-
-`MistClient.paginate` in `examples/mist_client.py` applies that bound for `page`/`limit` list endpoints. `page_size` must be from 1 to 100 (default 100). `max_pages` must be from 1 to 10000 (default 1000). Any caller-supplied `page` or `limit` is ignored; the client sends its own.
-
-A page shorter than `page_size` ends the walk. A completely full page on page `max_pages` is complete when the following page is empty, so the client requests page `max_pages + 1` once. An empty extra page means every record has been yielded. A non-empty extra page raises `MistAPIError` (`pagination exceeded the N-page safety limit`) after the records from the allowed pages have already been yielded. A caller that replaces its output file only after iteration finishes, including `examples/get_site_devices_to_csv.py`, therefore writes the export when the last allowed page is exactly full. When the extra page still has records, the destination file is left unchanged. The extra page uses the same GET retry rules as any other read.
+- `page_size` 1–100 (default 100); `max_pages` 1–10000 (default 1000). Caller-supplied `page`/`limit` params are ignored.
+- A page shorter than `page_size` ends the walk.
+- A full page at `max_pages` triggers one probe of page `max_pages + 1` using the normal GET retry rules. An empty probe completes the result; a non-empty probe raises `MistAPIError` (`pagination exceeded the N-page safety limit`) after the allowed pages' records were already yielded.
+- A caller that replaces its output file only after iteration finishes, such as `examples/get_site_devices_to_csv.py`, therefore writes the export when the last allowed page is exactly full and leaves the destination unchanged when the probe has records.
 
 ## cURL
 
