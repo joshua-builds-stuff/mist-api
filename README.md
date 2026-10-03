@@ -65,9 +65,9 @@ The usual command flow is:
 
 1. `info` confirms the specification version, available servers, and authentication schemes.
 2. `find TERM` searches for possible endpoints when the exact path is unknown.
-3. `show METHOD PATH` displays a concise view of one endpoint, including parameters, security, request body, and responses. A parameter `$ref`, including a single `$ref` inside `allOf`, `anyOf`, or `oneOf`, is labeled with the component name, its type, and `enum[...]` or `const=` when the component defines them. Several refs are listed under that keyword. A plain `type` is unchanged. Request and response schemas are named even when the component sits inside `allOf`, `anyOf`, `oneOf`, or an array's `items`.
+3. `show METHOD PATH` displays a concise view of one endpoint: parameters, security, request body, and responses. Parameter lines name the data model and print the allowed `enum[...]` or `const=` values; request and response schemas are named even inside composed models and arrays.
 4. `operation METHOD PATH` is used when expanded request or response schemas are needed.
-5. `schema NAME` is used to inspect a reusable data model. Add `--property FIELD` when only one field is needed. The name printed by `show` is the usual argument. `allOf` constraints on that field are merged into one `required` flag and schema. A `oneOf` or `anyOf` field stays in that same flat shape when every variant agrees. When the variants differ, the JSON lists each variant and names the variants that omit the field.
+5. `schema NAME` is used to inspect a reusable data model. Add `--property FIELD` when only one field is needed; the name printed by `show` is the usual argument. Composed models are merged into one answer when possible, and otherwise reported per variant.
 6. `tags` or `tag NAME` is used to browse groups of related endpoints.
 
 Example:
@@ -80,16 +80,16 @@ python scripts/query_spec.py operation GET "/api/v1/orgs/{org_id}/wlans" --max-d
 python scripts/query_spec.py schema wlan --property ssid --max-depth 1
 ```
 
-Output is deliberately bounded with `--limit`, `--max-depth`, and `--max-chars`. This keeps searches focused and prevents the full API specification from being placed into the assistant's context. When `schema` or `operation` JSON exceeds `--max-chars`, long text is shortened, nested schemas collapse to one-line labels, and trailing fields become an `x-query-omitted` count. The root schema remains visible through that trimming. [references/openapi.md](references/openapi.md) describes the `show` parameter labels, the request and response schema labels, the trim order, and the `schema --property` JSON for composed models.
+Output is deliberately bounded with `--limit`, `--max-depth`, and `--max-chars`. This keeps searches focused and prevents the full API specification from being placed into the assistant's context. Oversized results are trimmed in stages while staying valid and keeping the root schema visible. [references/openapi.md](references/openapi.md) describes the exact label formats, the trim order, and the `schema --property` JSON for composed models.
 
 ### When the example scripts are engaged
 
 The assistant reads the closest matching example before creating REST code. These examples connect to a Mist tenant only when a user deliberately runs them with the required credentials and arguments.
 
-- `examples/mist_client.py` is the shared API client used by the REST examples. It handles token attachment, approved HTTPS hosts, timeouts, bounded retries, pagination, and safe errors. It is imported by other examples rather than normally run by itself. `request` and `request_json` accept a JSON object or a JSON array as `json_body`. An array is sent unchanged. A string, bytes value, set, or number is rejected before any request is sent. `paginate` stops on a short or empty page. When the last page allowed by `max_pages` is full, it reads one more page and accepts the result when that page is empty.
+- `examples/mist_client.py` is the shared API client used by the REST examples. It handles token attachment, approved HTTPS hosts, timeouts, bounded retries, pagination, and safe errors. It is imported by other examples rather than normally run by itself. Request bodies may be JSON objects or arrays; other value types are rejected before any request is sent. Details are in [references/implementation-patterns.md](references/implementation-patterns.md).
 - `examples/list_sites.py` is used as the starting pattern for listing every site in an organization.
 - `examples/get_site_devices_to_csv.py` is used for resolving a site and exporting its device statistics to CSV.
-- `examples/update_wlan_stub.py` is used for previewing, applying, verifying, or rolling back one WLAN SSID change. It remains read-only unless `--apply` and the matching confirmation target are supplied. Server failures and uncertain transport outcomes are verified without retrying the PUT. When both the write outcome and verification are uncertain, a separate private pending recovery record preserves the before/intended values without replacing confirmed rollback. The file format and failure cases are in [references/safety-and-troubleshooting.md](references/safety-and-troubleshooting.md).
+- `examples/update_wlan_stub.py` is used for previewing, applying, verifying, or rolling back one WLAN SSID change. It remains read-only unless `--apply` and the matching confirmation target are supplied, verifies uncertain outcomes without retrying the write, and keeps uncertain-recovery information separate from confirmed rollback. The file format and failure cases are in [references/safety-and-troubleshooting.md](references/safety-and-troubleshooting.md).
 - `examples/webhook_receiver.py` is used when testing inbound Mist webhook delivery and signature validation on a local machine.
 
 Reference files are loaded only when their topic applies: implementation patterns for REST code, safety guidance for writes, event integration guidance for webhooks or WebSockets, and Terraform guidance for declarative workflows.

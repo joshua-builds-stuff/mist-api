@@ -81,6 +81,41 @@ the installed Agent Skills quick validator pass. Common vendor-export filenames
 are confirmed ignored. GitHub CI and source-archive checks are performed before
 merging the publication-presentation follow-up.
 
+## Token-Efficiency Audit — 2026-10-03
+
+Scope: the files an assistant loads into context. `SKILL.md` costs tokens on
+every skill trigger; `references/` files cost tokens only when their topic
+applies; `examples/` are code read on demand and were not changed. Token
+counts are estimates (characters ÷ 4), not tokenizer-exact.
+
+| File | Before (est. tokens) | After (est. tokens) | Change |
+|------|---------------------|---------------------|--------|
+| SKILL.md | ~2,116 | ~1,880 | −11% |
+| references/openapi.md | ~2,996 | ~2,591 | −14% |
+| references/implementation-patterns.md | ~1,113 | ~1,018 | −9% |
+| references/safety-and-troubleshooting.md | ~1,613 | ~1,441 | −11% |
+| references/event-integrations.md | ~662 | ~636 | −4% |
+| references/terraform.md | ~303 | ~303 | 0% |
+| **Agent-loaded total** | **~8,803** | **~7,869** | **−11%** |
+| README.md (human-facing, not agent-loaded) | ~3,095 | ~2,878 | −7% |
+
+What changed: duplicated label/merge mechanics now live only in
+`references/openapi.md`; long paragraphs became bullets; `SKILL.md` keeps
+one-line rules plus pointers. What deliberately did not change: the
+frontmatter description (trigger surface), all command examples, and every
+normative workflow, safety, rollback, and output-format rule — remaining
+text is predominantly behavioral contract, so deeper cuts would trade
+correctness. The structural efficiency lever was already present and is
+preserved: references and examples are loaded only when their topic applies.
+
+Non-developer support was strengthened, not reduced: `SKILL.md` now directs
+responses to define Mist terms plainly, provide copy-paste commands with
+placeholders, and state where each required value comes from, and the README's
+densest passages were rewritten in plain language with pointers to the
+detailed references. Verified post-edit: full test suite, lint/format, secret
+scan, and the Agent Skills quick validator all pass; no tests or scripts
+reference the edited documentation text.
+
 ## Metrics Snapshot
 
 | Metric | Value |
