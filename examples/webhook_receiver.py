@@ -244,6 +244,11 @@ class MistWebhookServer(ThreadingHTTPServer):
         self.request_timeout_seconds = request_timeout_seconds
         self.connection_deadline_seconds = connection_deadline_seconds
         self._connection_slots = threading.BoundedSemaphore(max_connections)
+        try:
+            if ipaddress.ip_address(server_address[0]).version == 6:
+                self.address_family = socket.AF_INET6
+        except ValueError:
+            pass
         super().__init__(server_address, MistWebhookHandler)
 
     def process_request(
@@ -411,7 +416,7 @@ def main() -> int:
             request_timeout_seconds=args.request_timeout_seconds,
             connection_deadline_seconds=args.connection_deadline_seconds,
         )
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         raise SystemExit(str(exc)) from None
 
     logger.info("Listening on http://%s:%s/mist/webhook", host, args.port)
