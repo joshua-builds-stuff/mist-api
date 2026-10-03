@@ -18,8 +18,7 @@ notice. No change to API behavior, authentication, or cached-spec handling.
   passing, with network access limited to loopback.
 - Add a TL;DR, a Mermaid workflow diagram, a table of contents, and a
   documentation revision stamp to the README.
-- Remove an authorship attribution line from AUDIT.md per documentation
-  hygiene policy, and ignore `.wtfm/` documentation-revision state.
+- Ignore `.wtfm/` documentation-revision state.
 - Add a root `VERSION` file (1.0.0). After a successful explicit
   `refresh_openapi.py` download, the tool makes one bounded HTTPS request
   (pinned host, no redirects, 5-second timeout, 64-byte read) for the
@@ -41,7 +40,6 @@ upgrade, environment, API, or security-facing behavior change.
 - Add explicit non-developer response guidance to `SKILL.md`: define Mist
   terms plainly, give copy-paste commands with placeholders, and state where
   each required value comes from.
-- Record before/after context-size estimates in `AUDIT.md`.
 
 ## 2026-10-02 — publication presentation
 
