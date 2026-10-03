@@ -3,9 +3,11 @@ name: mist-api
 description: Develop, review, debug, and safely operate Juniper Mist API integrations. Use for Mist Cloud REST endpoints, Python or cURL automation, org/site/device configuration, inventory, WLANs, assurance data, webhooks, WebSockets, Postman, and Mist Terraform workflows.
 ---
 
-# Mist API Development
+# Unofficial API Integration Skill for Juniper Mist
 
 Provide implementation-first Juniper Mist API help grounded in current authoritative evidence.
+
+This is an independent, unofficial skill, not a Juniper Networks or HPE product.
 
 ## Establish authoritative evidence
 

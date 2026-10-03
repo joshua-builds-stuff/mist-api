@@ -1,4 +1,4 @@
-# Codebase Audit Report: Mist API Agent Skill
+# Codebase Audit Report: Unofficial API Integration Skill for Juniper Mist
 
 **Audit Date:** 2026-10-01
 **Auditor:** GPT-6.1 Sol (AI-assisted code audit)
@@ -19,6 +19,67 @@ private: publication and review of non-code GitHub content require a separate
 maintainer decision.
 
 **Overall Health Grade: B**
+
+## Publication Follow-up — 2026-10-02
+
+This section updates the publication gates from the original audit; the original
+measurements below remain a historical snapshot.
+
+- The rollback-reader follow-up was merged as PR #29 (`7d95a73`). Its Linux
+  Python 3.10/3.13 and macOS/Windows CI checks passed. Subsequent dependency and
+  documentation changes reached `a9be490`, whose CI also passed.
+- README, SKILL heading, NOTICE, and assistant display metadata now use
+  **Unofficial API Integration Skill for Juniper Mist**. The `mist-api` identifier
+  and installation path are unchanged. Disclaimers explicitly include HPE.
+- No vendor specification, manuals, or logo/image assets were found among current
+  tracked files or the reviewed fetched-history object filenames. Ignore rules
+  now cover common downloaded Mist specification names. The external-cache
+  boundary remains in place; release archives must contain only reviewed source.
+- Scanned all 110 accessible historical Actions runs listed at review time:
+  576 log files, 9,006,163 bytes, no unavailable runs and no secret-detector
+  candidates. No private-key markers or Mist token/webhook-secret variable names
+  appeared. Logs were processed in temporary storage; raw logs were not committed
+  or reproduced in this report. This is automated screening, not a guarantee
+  against every form of confidential content or future workflow output.
+- GitHub description/comment screening covered 30 issue/PR entries, 17 issue/PR
+  comments, 29 inline review comments, and 11 review bodies. The 14 comment
+  entropy alerts were automated Codex review commit SHAs, not credentials.
+  No attachment links were found in the scanned descriptions/comments. No
+  releases or Actions artifacts were listed; wiki, discussions, and Pages were
+  disabled at review time.
+- Refreshed tracked/reachable-history secret screening passed. Private
+  vulnerability-reporting status remains unverified because the API returns
+  HTTP 404 while the repository is private; SECURITY.md provides a fallback
+  private-contact procedure.
+
+### Vendor terms and licensing boundary
+
+Reviewed [Juniper legal notices](https://www.juniper.net/us/en/legal-notices.html)
+and indexed [HPE terms](https://www.hpe.com/us/en/about/legal/terms-of-use.html).
+Direct retrieval of the HPE page failed, so its indexed text is not a complete
+verified copy. Juniper's website terms restrict redistribution of website
+content, and its trademark guidance limits unlicensed fair-use references to
+text, excluding logos and misleading affiliation. The project uses textual
+compatibility references, no vendor logos, and explicit unofficial branding.
+
+The exact documentation-site export inspected during review advertised version
+`2607.1.1` but had no `info.license` or `info.termsOfService` declaration. Although
+[mistsys/mist_openapi](https://github.com/mistsys/mist_openapi) carries an MIT license
+with Thomas Munzer's copyright notice, that must not be presumed to license the
+separately hosted export. NOTICE therefore keeps downloaded documentation outside
+this project's MIT grant and prohibits bundling it in project releases. API
+service access remains subject to the user's applicable vendor agreement.
+
+**Remaining maintainer decisions:** confirm ownership of authored material and
+absence of employer/customer NDA restrictions, then explicitly authorize the
+visibility change. No settings or visibility changes are included in this
+follow-up. This review is a practical risk assessment, not legal clearance.
+
+Local follow-up validation: 141 tests and 18 subtests pass; Ruff lint/format,
+Bandit, requirements vulnerability audit, tracked/history secret screening, and
+the installed Agent Skills quick validator pass. Common vendor-export filenames
+are confirmed ignored. GitHub CI and source-archive checks are performed before
+merging the publication-presentation follow-up.
 
 ## Metrics Snapshot
 
