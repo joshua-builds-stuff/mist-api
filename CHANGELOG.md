@@ -1,5 +1,12 @@
 # Revision history
 
+## 1.0.0 — 2026-10-03
+
+First tagged public release. `VERSION` is 1.0.0, and installations updated
+from this point are notified after a successful explicit refresh when a newer
+version is published. The sections below record the pre-release revision
+history.
+
 ## 2026-10-03 — minor
 
 Documentation verification run, project versioning, and an optional update
@@ -45,7 +52,7 @@ upgrade, environment, API, or security-facing behavior change.
 - Ignore common downloaded Mist specification filenames and reiterate that vendor
   exports must not be bundled with shared source or releases.
 
-## Unreleased — public-release hardening
+## 2026-10-01 — public-release hardening
 
 - Bound rollback-file reads even when a file grows after the size check, and
   report JSON parser-limit failures without a traceback or private content.
