@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import stat
 import tempfile
 from dataclasses import dataclass
@@ -41,6 +42,16 @@ _OFFICIAL_HOST = "www.juniper.net"
 _DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 _REQUEST_TIMEOUT_SECONDS = 30
 _USER_AGENT = "mist-api-skill/1.0"
+
+SKILL_REPO_URL = "https://github.com/joshua-builds-stuff/mist-api"
+_UPDATE_CHECK_URL = (
+    "https://raw.githubusercontent.com/joshua-builds-stuff/mist-api/main/VERSION"
+)
+_UPDATE_CHECK_HOST = "raw.githubusercontent.com"
+_UPDATE_CHECK_TIMEOUT_SECONDS = 5
+_MAX_VERSION_BYTES = 64
+_VERSION_PATTERN = re.compile(r"(\d{1,4})\.(\d{1,4})\.(\d{1,4})")
+_SKILL_ROOT = Path(__file__).resolve().parent.parent
 
 
 class RefreshError(RuntimeError):
@@ -255,6 +266,76 @@ def _one_line(error: BaseException) -> str:
     return message or error.__class__.__name__
 
 
+class _RefuseRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        # Returning None makes urllib raise; the update check then stays silent.
+        return None
+
+
+def _parse_version(text: str) -> tuple[int, int, int] | None:
+    match = _VERSION_PATTERN.fullmatch(text.strip())
+    if match is None:
+        return None
+    major, minor, patch = (int(part) for part in match.groups())
+    return (major, minor, patch)
+
+
+def _format_version(version: tuple[int, int, int]) -> str:
+    return ".".join(str(part) for part in version)
+
+
+def installed_skill_version() -> tuple[int, int, int] | None:
+    try:
+        raw = (_SKILL_ROOT / "VERSION").read_text(encoding="ascii")
+    except (OSError, UnicodeError, ValueError):
+        return None
+    return _parse_version(raw)
+
+
+def _update_check_enabled() -> bool:
+    disabled = {"0", "false", "no", "off"}
+    return os.environ.get("MIST_SKILL_UPDATE_CHECK", "").strip().lower() not in disabled
+
+
+def check_for_skill_update(*, opener=None) -> str | None:  # noqa: ANN001
+    """Return a one-line notice when a newer skill VERSION is published.
+
+    Best effort: one bounded HTTPS request to the pinned project host, no
+    redirects, no retries, and silence on every failure. Only strictly
+    validated ``major.minor.patch`` values are compared or printed, so remote
+    content can never inject text into the notice.
+    """
+    installed = installed_skill_version()
+    if installed is None:
+        return None
+    opener = opener or build_opener(_RefuseRedirectHandler())
+    request = Request(_UPDATE_CHECK_URL, headers={"User-Agent": _USER_AGENT})
+    try:
+        with opener.open(request, timeout=_UPDATE_CHECK_TIMEOUT_SECONDS) as response:
+            parsed = urlsplit(response.geturl())
+            if (
+                parsed.scheme.lower() != "https"
+                or (parsed.hostname or "").lower() != _UPDATE_CHECK_HOST
+            ):
+                return None
+            raw = response.read(_MAX_VERSION_BYTES + 1)
+    except Exception:
+        return None
+    if not isinstance(raw, bytes) or len(raw) > _MAX_VERSION_BYTES:
+        return None
+    try:
+        published = _parse_version(raw.decode("ascii"))
+    except UnicodeDecodeError:
+        return None
+    if published is None or published <= installed:
+        return None
+    return (
+        f"NOTE: mist-api skill {_format_version(published)} is published; this "
+        f"installation is {_format_version(installed)}. Update from "
+        f"{SKILL_REPO_URL} and reinstall per the README."
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -295,6 +376,10 @@ def main(argv: list[str] | None = None) -> int:
     if refresh_result.metadata_warning:
         message += f"; WARNING: {refresh_result.metadata_warning}"
     print(message)
+    if _update_check_enabled():
+        notice = check_for_skill_update()
+        if notice is not None:
+            print(notice)
     return 0
 
 

@@ -34,6 +34,8 @@ python scripts/query_spec.py info
 
 A refresh failure reports the cache as stale or unavailable; it never presents cached data as freshly downloaded.
 
+After a successful refresh only, the tool makes one bounded HTTPS request (pinned host, no redirects, 5-second timeout, 64-byte read) for the project's published `VERSION` and prints a one-line `NOTE:` when it is newer than the installed `VERSION`; only strictly validated `x.y.z` values are compared or printed. `--offline` never performs this or any other network request. Failures are silent and never affect the refresh result. `MIST_SKILL_UPDATE_CHECK=0` disables the check.
+
 ## Bounded queries
 
 ```bash

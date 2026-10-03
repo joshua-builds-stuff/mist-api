@@ -4,6 +4,11 @@
 
 **TL;DR:** Install this repository as the `mist-api` skill for an Agent Skills-compatible assistant, run `python scripts/refresh_openapi.py` once to download Juniper's API reference into a local cache, then ask for Mist API explanations, scripts, or change plans. The assistant verifies endpoints before writing code, and live changes require explicit confirmation.
 
+<!-- wtfm:revision -->
+> Documents **vunversioned** (`9e1edcf`) · Doc revision **1** · Updated 2026-10-03
+> Latest change: Documentation verified against a sandboxed run; added TL;DR, diagram, and TOC.
+<!-- /wtfm:revision -->
+
 This project is independent and is not affiliated with, endorsed by, or sponsored by Juniper Networks or Hewlett Packard Enterprise (HPE).
 
 - [How the skill works](#how-the-skill-works)
@@ -137,6 +142,7 @@ using your platform's Python instructions before installing requirements.
 | `WEBHOOK_SHARED_SECRET` | Webhook receiver | Required webhook HMAC secret |
 | `PORT`, `MAX_CONTENT_LENGTH_BYTES` | Webhook receiver | Optional listen port and body-size limit |
 | `MIST_OPENAPI_PATH` | Documentation tools | Optional absolute cache path outside the installation |
+| `MIST_SKILL_UPDATE_CHECK` | Refresh tool | Optional; set to `0` to disable the post-download skill update notice |
 
 The webhook example is not a production service: connection admission, inactivity
 timeouts, and total connection deadlines limit resource use but do not provide TLS,
@@ -157,6 +163,12 @@ Later, you can check which cached version is available without downloading or ch
 ```bash
 python scripts/refresh_openapi.py --offline
 ```
+
+After a successful download, the tool also makes one small HTTPS request to this
+project's repository to compare your installed skill `VERSION` with the published
+one, and prints a single `NOTE:` line when an update exists. The check never runs
+with `--offline`, never retries, stays silent on any failure, and
+`MIST_SKILL_UPDATE_CHECK=0` disables it.
 
 Automation and test environments can choose a different cache file with `MIST_OPENAPI_PATH`. Use of downloaded Juniper material is subject to Juniper's applicable terms; see [NOTICE](NOTICE).
 
