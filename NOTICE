@@ -17,10 +17,6 @@ project releases. A license on a separate upstream repository must not be
 assumed to cover the export downloaded from Juniper's documentation website.
 No rights to vendor API services or trademarks are granted by this project.
 
-Vendor legal notices and terms:
-https://www.juniper.net/us/en/legal-notices.html
-https://www.hpe.com/us/en/about/legal/terms-of-use.html
-
 Official export source:
 https://www.juniper.net/documentation/us/en/software/mist/api/static/exports/mist-api-openapi31json.json
 
