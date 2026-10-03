@@ -5,8 +5,8 @@
 **TL;DR:** Install this repository as the `mist-api` skill for an Agent Skills-compatible assistant, run `python scripts/refresh_openapi.py` once to download Juniper's API reference into a local cache, then ask for Mist API explanations, scripts, or change plans. The assistant verifies endpoints before writing code, and live changes require explicit confirmation.
 
 <!-- wtfm:revision -->
-> Documents **vunversioned** (`9e1edcf`) · Doc revision **1** · Updated 2026-10-03
-> Latest change: Documentation verified against a sandboxed run; added TL;DR, diagram, and TOC.
+> Documents **v1.0.0** (`c06b2a0`) · Doc revision **2** · Updated 2026-10-03
+> Latest change: Verified docs in a sandbox; added versioning and an opt-out update notice.
 <!-- /wtfm:revision -->
 
 This project is independent and is not affiliated with, endorsed by, or sponsored by Juniper Networks or Hewlett Packard Enterprise (HPE).
