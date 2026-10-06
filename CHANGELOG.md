@@ -1,5 +1,12 @@
 # Revision history
 
+## 2026-10-06 — minor
+
+Documentation sync for changes already merged to `main` (#41 and #42). No install, upgrade, environment, or prerequisite changes. No API or security-facing behavior change.
+
+- `examples/webhook_receiver.py` logs `Listening on http://HOST:PORT/mist/webhook` after a successful bind. When `HOST` parses as an IPv6 address, the log wraps that host in brackets. `--host ::1 --port 8080` logs `Listening on http://[::1]:8080/mist/webhook`. An IPv4 address or hostname is not wrapped: the same port logs `Listening on http://127.0.0.1:8080/mist/webhook` or `Listening on http://localhost:8080/mist/webhook`. The logged host text is not rewritten. Which addresses are accepted, and how a failed bind exits, are unchanged.
+- README points to NOTICE for the vendor-material boundary. It does not claim that NOTICE contains legal-notice links, and this revision adds none.
+
 ## 1.0.0 — 2026-10-03
 
 First tagged public release. `VERSION` is 1.0.0, and installations updated
