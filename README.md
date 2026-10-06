@@ -230,4 +230,4 @@ for private vulnerability reporting.
 The project license does not grant rights to vendor documentation, trademarks,
 logos, API services, or tenant data. Do not bundle downloaded specifications or
 vendor manuals in forks, releases, or shared working folders. See [NOTICE](NOTICE)
-for the vendor-material boundary and applicable legal-notice links.
+for the vendor-material boundary.
