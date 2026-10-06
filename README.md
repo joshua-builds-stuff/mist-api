@@ -95,7 +95,7 @@ The assistant reads the closest matching example before creating REST code. Thes
 - `examples/list_sites.py` is used as the starting pattern for listing every site in an organization.
 - `examples/get_site_devices_to_csv.py` is used for resolving a site and exporting its device statistics to CSV.
 - `examples/update_wlan_stub.py` is used for previewing, applying, verifying, or rolling back one WLAN SSID change. It remains read-only unless `--apply` and the matching confirmation target are supplied, verifies uncertain outcomes without retrying the write, and keeps uncertain-recovery information separate from confirmed rollback. The file format and failure cases are in [references/safety-and-troubleshooting.md](references/safety-and-troubleshooting.md).
-- `examples/webhook_receiver.py` is used when testing inbound Mist webhook delivery and signature validation on a local machine.
+- `examples/webhook_receiver.py` is used when testing inbound Mist webhook delivery and signature validation on a local machine. After a successful bind it logs a usable listen URL; an IPv6 host is wrapped in brackets (`http://[::1]:8080/mist/webhook`). IPv4 addresses and hostnames are not wrapped. Details are in [references/event-integrations.md](references/event-integrations.md).
 
 Reference files are loaded only when their topic applies: implementation patterns for REST code, safety guidance for writes, event integration guidance for webhooks or WebSockets, and Terraform guidance for declarative workflows.
 

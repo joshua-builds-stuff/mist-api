@@ -32,6 +32,7 @@ Also:
 - Admits at most 32 connections (`--max-connections`, max 128), applies a 10-second socket inactivity timeout (`--request-timeout-seconds`) and a 30-second total connection deadline (`--connection-deadline-seconds`); timeouts must be positive and at most 300 seconds. These apply before parsing the request line or headers.
 - Rejects duplicate framing/signature headers, unsupported Transfer-Encoding, and non-ASCII-decimal Content-Length. Connections close after each POST response.
 - On a remote development machine, use `--host 0.0.0.0 --allow-non-loopback` only on a trusted network; never expose the harness directly to the internet.
+- After a successful bind, logs `Listening on http://HOST:PORT/mist/webhook`. An IPv6 host is wrapped in brackets (`http://[::1]:8080/mist/webhook` for `--host ::1 --port 8080`). IPv4 addresses and hostnames are not wrapped (`http://127.0.0.1:8080/mist/webhook`, `http://localhost:8080/mist/webhook`). The logged host text is not rewritten. Bind checks and bind-failure exit are unchanged.
 
 ## WebSockets
 
