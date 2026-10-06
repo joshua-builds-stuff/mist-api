@@ -46,3 +46,40 @@ def test_main_exits_cleanly_when_bind_fails(monkeypatch: pytest.MonkeyPatch) -> 
         webhook.main()
 
     assert excinfo.value.code == "bind failed"
+
+
+class _FakeServer:
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        pass
+
+    def serve_forever(self) -> None:
+        return None
+
+    def server_close(self) -> None:
+        return None
+
+
+@pytest.mark.parametrize(
+    ("host", "expected_url"),
+    [
+        ("::1", "http://[::1]:8080/mist/webhook"),
+        ("127.0.0.1", "http://127.0.0.1:8080/mist/webhook"),
+        ("localhost", "http://localhost:8080/mist/webhook"),
+    ],
+)
+def test_main_logs_listen_url_with_bracketed_ipv6_host(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    host: str,
+    expected_url: str,
+) -> None:
+    monkeypatch.setattr(webhook, "MistWebhookServer", _FakeServer)
+    monkeypatch.setenv("WEBHOOK_SHARED_SECRET", "secret")
+    monkeypatch.setattr(
+        sys, "argv", ["webhook_receiver.py", "--host", host, "--port", "8080"]
+    )
+
+    with caplog.at_level("INFO", logger=webhook.logger.name):
+        assert webhook.main() == 0
+
+    assert f"Listening on {expected_url}" in caplog.messages

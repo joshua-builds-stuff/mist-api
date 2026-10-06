@@ -391,6 +391,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _url_host(host: str) -> str:
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return host
+    return f"[{host}]" if address.version == 6 else host
+
+
 def main() -> int:
     args = parse_args()
     secret = os.environ.get("WEBHOOK_SHARED_SECRET")
@@ -419,7 +427,7 @@ def main() -> int:
     except (ValueError, OSError) as exc:
         raise SystemExit(str(exc)) from None
 
-    logger.info("Listening on http://%s:%s/mist/webhook", host, args.port)
+    logger.info("Listening on http://%s:%s/mist/webhook", _url_host(host), args.port)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
