@@ -57,10 +57,11 @@ Spec paths include `/api/v1`; the request helpers' base URL already ends in `/ap
 1. Identify the object scope: organization, site, device, or template.
 2. Discover required IDs when the user has names only; reject ambiguous matches.
 3. Verify the operation, effective authentication, deprecation state, pagination, and relevant schemas.
-4. Give the smallest practical request or implementation.
-5. Include timeouts, bounded retries, pagination, and secret-safe errors where relevant.
-6. For a proposed write: read current state, keep only the fields needed to undo it, show the intended change, re-check for concurrent changes, apply narrowly, verify the exact result. Publish or replace a rollback record only after a read-back confirms the change, or when the write succeeded but verification could not be completed. A 5xx, HTTP 408, redirect, or transport failure is uncertain, not rejected: verify without retrying the write; if verification also fails, save separate private pending recovery without replacing confirmed rollback. Keep the previous record when a rejected write did not apply.
-7. Test one low-impact object before bulk rollout and bound the affected object set.
+4. Check whether relevant features are enabled and applicable before interpreting their configured values. Stored or default values alone do not mean a feature is active. For example, evaluate WLAN bandwidth limits alongside their matching `*_enabled` flags. When applying a change, verify any required enable flags and confirm the resulting effective state.
+5. Give the smallest practical request or implementation.
+6. Include timeouts, bounded retries, pagination, and secret-safe errors where relevant.
+7. For a proposed write: read current state, keep only the fields needed to undo it, show the intended change, re-check for concurrent changes, apply narrowly, verify the exact result. Publish or replace a rollback record only after a read-back confirms the change, or when the write succeeded but verification could not be completed. A 5xx, HTTP 408, redirect, or transport failure is uncertain, not rejected: verify without retrying the write; if verification also fails, save separate private pending recovery without replacing confirmed rollback. Keep the previous record when a rejected write did not apply.
+8. Test one low-impact object before bulk rollout and bound the affected object set.
 
 Never perform a live tenant mutation merely because the user requested code, analysis, or a plan. Execute a write or delete only when the user explicitly requests execution, the target and impact are clear, and confirmation is obtained immediately before the mutation.
 
