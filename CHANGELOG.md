@@ -1,5 +1,13 @@
 # Revision history
 
+## 2026-11-10 — minor
+
+Documentation sync and cleanup. No install, upgrade, environment, API, or security-facing behavior change.
+
+- `SKILL.md` requires checking whether a feature is enabled before its configured values are interpreted, and confirming any required enable flags and the resulting effective state after a change. The README safety rules now state this.
+- Remove references to other assistant skills and their tooling. The maintainer checks no longer call an external skill validator. They are the same checks that CI runs.
+- Re-verified in a disposable clone: dependency installs, the maintainer checks, the offline cache check's no-cache exit, every script and example `--help`, and the `git archive` install flow. 17 commands, all passing.
+
 ## 2026-10-06 — minor
 
 Documentation sync for changes already merged to `main` (#41 and #42). No install, upgrade, environment, or prerequisite changes. No API or security-facing behavior change.
@@ -25,7 +33,7 @@ notice. No change to API behavior, authentication, or cached-spec handling.
   passing, with network access limited to loopback.
 - Add a TL;DR, a Mermaid workflow diagram, a table of contents, and a
   documentation revision stamp to the README.
-- Ignore `.wtfm/` documentation-revision state.
+- Ignore local documentation-revision state.
 - Add a root `VERSION` file (1.0.0). After a successful explicit
   `refresh_openapi.py` download, the tool makes one bounded HTTPS request
   (pinned host, no redirects, 5-second timeout, 64-byte read) for the
