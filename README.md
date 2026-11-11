@@ -4,10 +4,8 @@
 
 **TL;DR:** Install this repository as the `mist-api` skill for an Agent Skills-compatible assistant, run `python scripts/refresh_openapi.py` once to download Juniper's API reference into a local cache, then ask for Mist API explanations, scripts, or change plans. The assistant verifies endpoints before writing code, and live changes require explicit confirmation.
 
-<!-- wtfm:revision -->
-> Documents **v1.0.0** (`c06b2a0`) · Doc revision **2** · Updated 2026-10-03
-> Latest change: Verified docs in a sandbox; added versioning and an opt-out update notice.
-<!-- /wtfm:revision -->
+> Documents **v1.0.0** (`d884775`) · Doc revision **3** · Updated 2026-11-10
+> Latest change: Re-verified docs, added the feature-enable safety rule, and removed references to other skills.
 
 This project is independent and is not affiliated with, endorsed by, or sponsored by Juniper Networks or Hewlett Packard Enterprise (HPE).
 
@@ -177,6 +175,7 @@ Automation and test environments can choose a different cache file with `MIST_OP
 - API tokens should come from environment variables, never hardcoded files or chat output.
 - Read-only discovery comes before configuration changes.
 - Exact endpoints and fields are verified instead of guessed.
+- A configured value counts only when its feature is enabled. For example, a WLAN bandwidth limit is read together with its matching `*_enabled` flag, and a change confirms the resulting effective state.
 - Large result sets use pagination so records are not silently missed.
 - Requests use timeouts and limited retries instead of retrying forever.
 - Writes use the smallest necessary payload and a clearly bounded target list.
@@ -211,10 +210,7 @@ ruff format --check .
 bandit -q -r scripts examples
 pip-audit -r requirements-dev.txt
 python tools/check_secrets.py
-python path/to/skill-creator/scripts/quick_validate.py .
 ```
-
-The final validation command depends on where the Agent Skills validation utility is installed.
 
 `ruff check` uses the rule set pinned in `ruff.toml` (`E4`, `E7`, `E9`, `F`, and `B`). A local run from this directory matches CI as Ruff's default rules change. No extra install step is required.
 

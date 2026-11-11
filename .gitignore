@@ -29,9 +29,6 @@ credentials*.json
 coverage.xml
 htmlcov/
 
-# Documentation-revision state from the WTFM tooling.
-.wtfm/
-
 # Downloaded vendor documentation belongs in the external user cache.
 mist-api-openapi*.json
 mist.openapi.yaml
