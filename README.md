@@ -4,8 +4,8 @@
 
 **TL;DR:** Install this repository as the `mist-api` skill for an Agent Skills-compatible assistant, run `python scripts/refresh_openapi.py` once to download Juniper's API reference into a local cache, then ask for Mist API explanations, scripts, or change plans. The assistant verifies endpoints before writing code, and live changes require explicit confirmation.
 
-> Documents **v1.0.1** (`d46dafd`) · Doc revision **4** · Updated 2026-11-18
-> Latest change: Added the implementation, usability, and security-audit guides, and re-verified the OpenAPI download after the 1.0.1 host fix.
+> Documents **v1.0.1** (`c585ac2`) · Doc revision **5** · Updated 2026-11-18
+> Latest change: The official Mist API documentation moved to `networkingdocs.hpe.com`; the skill and docs now point there.
 
 This project is independent and is not affiliated with, endorsed by, or sponsored by Juniper Networks or Hewlett Packard Enterprise (HPE).
 
@@ -125,6 +125,8 @@ Mist OpenAPI refreshed: version 2610.1.0 at <your cache folder>/mist-api-openapi
 
 The file comes from `networkingdocs.hpe.com`, where Juniper now publishes it. This downloads API documentation only; it does not configure your Mist tenant.
 
+The official Mist API documentation also moved from `www.juniper.net` to [networkingdocs.hpe.com](https://networkingdocs.hpe.com/documentation/us/en/software/mist/api/http/getting-started/how-to-get-started/). Old `www.juniper.net` links redirect there. The skill uses this page when the cached specification cannot answer a question.
+
 > [!IMPORTANT]
 > Version 1.0.0 cannot download the reference. It fails with `redirect blocked: downloads must remain on https://www.juniper.net` because the old address now redirects to HPE. Update to 1.0.1 or later.
 
@@ -153,7 +155,7 @@ You ask your assistant for Mist API help. The assistant runs the scripts below w
 This script manages the local copy of Juniper's Mist OpenAPI specification.
 
 - `python scripts/refresh_openapi.py --offline` is engaged first. It verifies that a usable cached specification exists without using the network or writing files.
-- `python scripts/refresh_openapi.py` is engaged when no valid cache exists or when current API details are important. It downloads the specification, validates it, and safely replaces the cached copy.
+- `python scripts/refresh_openapi.py` is engaged when no valid cache exists or when current API details are important. It downloads the specification from `networkingdocs.hpe.com`, validates it, and safely replaces the cached copy.
 - If a download fails, the existing valid cache remains in place.
 
 #### `scripts/spec_cache.py`
@@ -285,6 +287,7 @@ mist-api/
 | [docs/usability.md](docs/usability.md) | Users: getting started, task guides, and common problems |
 | [docs/implementation.md](docs/implementation.md) | Maintainers: architecture, data flow, design decisions, and how to extend |
 | [docs/security-audit.md](docs/security-audit.md) | Observed security checks and network access |
+| [Mist API documentation](https://networkingdocs.hpe.com/documentation/us/en/software/mist/api/http/getting-started/how-to-get-started/) | The official Mist API guide, on `networkingdocs.hpe.com` |
 | [CHANGELOG.md](CHANGELOG.md) | Every user-facing change |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to submit a change |
 | [SECURITY.md](SECURITY.md) | Private vulnerability reporting |

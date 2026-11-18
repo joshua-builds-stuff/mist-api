@@ -7,7 +7,8 @@ Enterprise (HPE).
 
 No Juniper OpenAPI export or other Juniper documentation is distributed with
 this project. The optional refresh utility retrieves the Mist OpenAPI export
-from Juniper's official documentation site into the current user's cache.
+from the official Mist documentation site (networkingdocs.hpe.com) into the
+current user's cache.
 Downloaded material remains subject to Juniper's applicable terms and is not
 licensed under this project's MIT License.
 
@@ -18,7 +19,10 @@ assumed to cover the export downloaded from Juniper's documentation website.
 No rights to vendor API services or trademarks are granted by this project.
 
 Official export source:
-https://www.juniper.net/documentation/us/en/software/mist/api/static/exports/mist-api-openapi31json.json
+https://networkingdocs.hpe.com/documentation/us/en/software/mist/api/static/exports/mist-api-openapi31json.json
+
+Official Mist API documentation:
+https://networkingdocs.hpe.com/documentation/us/en/software/mist/api/http/getting-started/how-to-get-started/
 
 Juniper Networks, Juniper, Mist, and related names and marks are trademarks or
 registered trademarks of their respective owners.
