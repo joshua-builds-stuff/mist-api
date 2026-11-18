@@ -163,15 +163,19 @@ class RefreshTests(unittest.TestCase):
         chmod.assert_called_once_with(path, stat.S_IRUSR | stat.S_IWUSR)
 
     def test_source_is_hardcoded_official_https(self) -> None:
-        self.assertTrue(refresh_openapi.SPEC_URL.startswith("https://www.juniper.net/"))
+        self.assertTrue(
+            refresh_openapi.SPEC_URL.startswith("https://networkingdocs.hpe.com/")
+        )
 
     def test_redirect_handler_blocks_insecure_and_foreign_redirects(self) -> None:
         handler = refresh_openapi._OfficialHttpsRedirectHandler()
         malicious_urls = (
-            "http://www.juniper.net/spec.json",
-            "https://juniper.net/spec.json",
-            "https://www.juniper.net.evil.example/spec.json",
-            "https://www.juniper.net@evil.example/spec.json",
+            "http://networkingdocs.hpe.com/spec.json",
+            "https://hpe.com/spec.json",
+            "https://networkingdocs.hpe.com.evil.example/spec.json",
+            "https://networkingdocs.hpe.com@evil.example/spec.json",
+            "https://networkingdocs.hpe.com:8443/spec.json",
+            "https://www.juniper.net/spec.json",
         )
         for url in malicious_urls:
             with self.subTest(url=url), self.assertRaises(refresh_openapi.RefreshError):
