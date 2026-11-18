@@ -1,5 +1,13 @@
 # Revision history
 
+## 2026-11-18 — minor
+
+Point the skill at the new home of the Mist API documentation. `VERSION` stays 1.0.1. No script, API, or security-facing behavior change.
+
+- `SKILL.md` names `https://networkingdocs.hpe.com/documentation/us/en/software/mist/api/http/getting-started/how-to-get-started/` as the official Mist API documentation. The skill uses it when the cached export cannot answer, and cites the `networkingdocs.hpe.com` address instead of the old `www.juniper.net` address.
+- `NOTICE`, `README.md`, and `references/openapi.md` show the `networkingdocs.hpe.com` export and documentation addresses. The README Documentation table links the official guide.
+- Re-verified in a disposable clone: dependency installs, the maintainer checks, the offline cache check, a live export download from `networkingdocs.hpe.com` (version 2610.1.0), and `query_spec.py info` and `show`. 12 commands, all passing.
+
 ## 2026-11-18 — documentation
 
 New guides. No install, API, or security-facing behavior change.
