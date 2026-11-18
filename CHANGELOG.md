@@ -1,5 +1,14 @@
 # Revision history
 
+## 2026-11-18 — documentation
+
+New guides. No install, API, or security-facing behavior change.
+
+- Add `docs/usability.md` (getting started, task guides, common problems), `docs/implementation.md` (architecture, data flow, design decisions, how to extend), and `docs/security-audit.md` (observed checks and network access).
+- Restructure the README: a "See it in action" section with real query output, then Quickstart, Install, Usage, Examples, Configuration, Development, and a Documentation section that links every guide. No content was removed.
+- The README explains that version 1.0.0 cannot download the API reference and says to update to 1.0.1.
+- Re-verified in a disposable clone with Python 3.13: dependency installs, the six maintainer checks, the full download from `networkingdocs.hpe.com`, every query command, every script and example `--help`, the missing-token exit, and the `git archive` install flow. 27 commands, all passing.
+
 ## 1.0.1 — 2026-11-18
 
 Fix the OpenAPI download. `VERSION` is 1.0.1.

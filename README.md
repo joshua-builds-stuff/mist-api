@@ -4,24 +4,24 @@
 
 **TL;DR:** Install this repository as the `mist-api` skill for an Agent Skills-compatible assistant, run `python scripts/refresh_openapi.py` once to download Juniper's API reference into a local cache, then ask for Mist API explanations, scripts, or change plans. The assistant verifies endpoints before writing code, and live changes require explicit confirmation.
 
-> Documents **v1.0.0** (`d884775`) · Doc revision **3** · Updated 2026-11-10
-> Latest change: Re-verified docs, added the feature-enable safety rule, and removed references to other skills.
+> Documents **v1.0.1** (`d46dafd`) · Doc revision **4** · Updated 2026-11-18
+> Latest change: Added the implementation, usability, and security-audit guides, and re-verified the OpenAPI download after the 1.0.1 host fix.
 
 This project is independent and is not affiliated with, endorsed by, or sponsored by Juniper Networks or Hewlett Packard Enterprise (HPE).
 
-- [How the skill works](#how-the-skill-works)
+- [See it in action](#see-it-in-action)
+- [Quickstart](#quickstart)
+- [Install](#install)
+- [Usage](#usage)
   - [When each support script is engaged](#when-each-support-script-is-engaged)
-  - [When the example scripts are engaged](#when-the-example-scripts-are-engaged)
-- [Before first use](#before-first-use)
-  - [Install the skill](#install-the-skill)
-  - [Environment variables](#environment-variables)
-  - [Download the API reference manual](#download-the-api-reference-manual)
+- [Examples](#examples)
+- [Configuration](#configuration)
 - [Safety rules built into the skill](#safety-rules-built-into-the-skill)
-- [Folder map](#folder-map)
-- [Maintainer checks](#maintainer-checks)
+- [Development](#development)
+- [Documentation](#documentation)
 - [License](#license)
 
-## How the skill works
+## See it in action
 
 `SKILL.md` controls the workflow. When a Mist task requires exact endpoint, field, authentication, or pagination details, the assistant engages the supporting scripts in this order:
 
@@ -37,7 +37,114 @@ flowchart TD
     G --> H[Explanation, code,<br>or change plan]
 ```
 
+This is what the assistant sees when it looks up an endpoint. The output is from a verification run against the current API reference:
+
+```text
+$ python scripts/query_spec.py find wlans --limit 5
+GET     /api/v1/orgs/{org_id}/wlans  - listOrgWlans
+GET     /api/v1/sites/{site_id}/wlans  - listSiteWlans
+GET     /api/v1/sites/{site_id}/wlans/derived  - listSiteWlansDerived
+POST    /api/v1/orgs/{org_id}/wlans  - createOrgWlan
+POST    /api/v1/sites/{site_id}/wlans  - createSiteWlan
+... (15 more; raise --limit to show them)
+
+$ python scripts/query_spec.py schema wlan --property ssid --max-depth 1
+{
+  "_meta": {
+    "max_chars": 6000,
+    "reasons": [],
+    "truncated": false
+  },
+  "data": {
+    "component": "wlan",
+    "property": "ssid",
+    "required": true,
+    "schema": {
+      "description": "Name of the SSID",
+      "type": "string"
+    }
+  }
+}
+```
+
 The scripts under `scripts/` inspect API documentation only. They do not connect to a Mist tenant or change its configuration.
+
+## Quickstart
+
+```bash
+mkdir -p ~/.claude/skills/mist-api
+git -C mist-api archive HEAD | tar -x -C ~/.claude/skills/mist-api
+cd ~/.claude/skills/mist-api
+python scripts/refresh_openapi.py
+```
+
+Then ask your assistant a Mist API question. [docs/usability.md](docs/usability.md) walks through the first steps with the expected output.
+
+## Install
+
+You need an Agent Skills-compatible coding assistant and Python 3.10 or newer. The REST examples also use the Python `requests` package.
+
+Commands in this README use `python`. If that command is unavailable, try `python3` or `py -3`.
+
+### Install the skill
+
+Copy or clone this directory as `mist-api` inside the skills folder used by your assistant. For a personal Claude Code skill:
+
+```bash
+mkdir -p ~/.claude/skills/mist-api
+git -C mist-api archive HEAD | tar -x -C ~/.claude/skills/mist-api
+```
+
+For a project-only Claude Code skill, use `.claude/skills/mist-api`. Other Agent Skills-compatible assistants use their corresponding skill directory.
+
+Share a tagged GitHub source archive or `git archive HEAD`, not a copy of a used
+working folder. Archives include tracked files only; review them before sharing.
+Do not include `.env`, virtual environments, downloaded caches, CSV exports,
+Terraform state, or rollback/pending recovery records.
+
+### Install the example requirements
+
+Use an isolated environment (`python -m venv .venv`) for dependencies. Activate it
+using your platform's Python instructions, then install:
+
+```bash
+python -m pip install -r examples/requirements.txt
+```
+
+### Download the API reference manual
+
+The large Juniper OpenAPI specification is not included in this project. Download it into your local user cache:
+
+```bash
+python scripts/refresh_openapi.py
+```
+
+```text
+Mist OpenAPI refreshed: version 2610.1.0 at <your cache folder>/mist-api-openapi31.json
+```
+
+The file comes from `networkingdocs.hpe.com`, where Juniper now publishes it. This downloads API documentation only; it does not configure your Mist tenant.
+
+> [!IMPORTANT]
+> Version 1.0.0 cannot download the reference. It fails with `redirect blocked: downloads must remain on https://www.juniper.net` because the old address now redirects to HPE. Update to 1.0.1 or later.
+
+Later, you can check which cached version is available without downloading or changing anything:
+
+```bash
+python scripts/refresh_openapi.py --offline
+```
+
+After a successful download, the tool also makes one small HTTPS request to this
+project's repository to compare your installed skill `VERSION` with the published
+one, and prints a single `NOTE:` line when an update exists. The check never runs
+with `--offline`, never retries, stays silent on any failure, and
+`MIST_SKILL_UPDATE_CHECK=0` disables it.
+
+Automation and test environments can choose a different cache file with `MIST_OPENAPI_PATH`. Use of downloaded Juniper material is subject to Juniper's applicable terms; see [NOTICE](NOTICE).
+
+## Usage
+
+You ask your assistant for Mist API help. The assistant runs the scripts below when it needs exact API details. You can also run them yourself.
 
 ### When each support script is engaged
 
@@ -46,7 +153,7 @@ The scripts under `scripts/` inspect API documentation only. They do not connect
 This script manages the local copy of Juniper's Mist OpenAPI specification.
 
 - `python scripts/refresh_openapi.py --offline` is engaged first. It verifies that a usable cached specification exists without using the network or writing files.
-- `python scripts/refresh_openapi.py` is engaged when no valid cache exists or when current API details are important. It downloads the specification from Juniper, validates it, and safely replaces the cached copy.
+- `python scripts/refresh_openapi.py` is engaged when no valid cache exists or when current API details are important. It downloads the specification, validates it, and safely replaces the cached copy.
 - If a download fails, the existing valid cache remains in place.
 
 #### `scripts/spec_cache.py`
@@ -85,9 +192,11 @@ python scripts/query_spec.py schema wlan --property ssid --max-depth 1
 
 Output is deliberately bounded with `--limit`, `--max-depth`, and `--max-chars`. This keeps searches focused and prevents the full API specification from being placed into the assistant's context. Oversized results are trimmed in stages while staying valid and keeping the root schema visible. [references/openapi.md](references/openapi.md) describes the exact label formats, the trim order, and the `schema --property` JSON for composed models.
 
-### When the example scripts are engaged
+Reference files are loaded only when their topic applies: implementation patterns for REST code, safety guidance for writes, event integration guidance for webhooks or WebSockets, and Terraform guidance for declarative workflows.
 
-The assistant reads the closest matching example before creating REST code. These examples connect to a Mist tenant only when a user deliberately runs them with the required credentials and arguments.
+## Examples
+
+The assistant reads the closest matching example before creating REST code. These examples connect to a Mist tenant only when a user deliberately runs them with the required credentials and arguments. Every example has `--help`.
 
 - `examples/mist_client.py` is the shared API client used by the REST examples. It handles token attachment, approved HTTPS hosts, timeouts, bounded retries, pagination, and safe errors. It is imported by other examples rather than normally run by itself. Request bodies may be JSON objects or arrays; other value types are rejected before any request is sent. Details are in [references/implementation-patterns.md](references/implementation-patterns.md).
 - `examples/list_sites.py` is used as the starting pattern for listing every site in an organization.
@@ -95,40 +204,14 @@ The assistant reads the closest matching example before creating REST code. Thes
 - `examples/update_wlan_stub.py` is used for previewing, applying, verifying, or rolling back one WLAN SSID change. It remains read-only unless `--apply` and the matching confirmation target are supplied, verifies uncertain outcomes without retrying the write, and keeps uncertain-recovery information separate from confirmed rollback. The file format and failure cases are in [references/safety-and-troubleshooting.md](references/safety-and-troubleshooting.md).
 - `examples/webhook_receiver.py` is used when testing inbound Mist webhook delivery and signature validation on a local machine. After a successful bind it logs a usable listen URL; an IPv6 host is wrapped in brackets (`http://[::1]:8080/mist/webhook`). IPv4 addresses and hostnames are not wrapped. Details are in [references/event-integrations.md](references/event-integrations.md).
 
-Reference files are loaded only when their topic applies: implementation patterns for REST code, safety guidance for writes, event integration guidance for webhooks or WebSockets, and Terraform guidance for declarative workflows.
+Without a token, an example stops before it sends any request:
 
-## Before first use
-
-You need an Agent Skills-compatible coding assistant and Python 3.10 or newer. The REST examples also use the Python `requests` package.
-
-Install the example requirements:
-
-```bash
-python -m pip install -r examples/requirements.txt
+```text
+$ python list_sites.py --org-id ORG_ID
+Set MIST_API_TOKEN in your environment.
 ```
 
-Commands in this README use `python`. If that command is unavailable, try `python3` or `py -3`.
-
-### Install the skill
-
-Copy or clone this directory as `mist-api` inside the skills folder used by your assistant. For a personal Claude Code skill:
-
-```bash
-mkdir -p ~/.claude/skills/mist-api
-git -C mist-api archive HEAD | tar -x -C ~/.claude/skills/mist-api
-```
-
-For a project-only Claude Code skill, use `.claude/skills/mist-api`. Other Agent Skills-compatible assistants use their corresponding skill directory.
-
-Share a tagged GitHub source archive or `git archive HEAD`, not a copy of a used
-working folder. Archives include tracked files only; review them before sharing.
-Do not include `.env`, virtual environments, downloaded caches, CSV exports,
-Terraform state, or rollback/pending recovery records.
-
-### Environment variables
-
-Use an isolated environment (`python -m venv .venv`) for dependencies. Activate it
-using your platform's Python instructions before installing requirements.
+## Configuration
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
@@ -146,30 +229,6 @@ The webhook example is not a production service: connection admission, inactivit
 timeouts, and total connection deadlines limit resource use but do not provide TLS,
 durable processing, replay protection, or production rate limiting.
 
-### Download the API reference manual
-
-The large Juniper OpenAPI specification is not included in this project. Download it into your local user cache:
-
-```bash
-python scripts/refresh_openapi.py
-```
-
-This downloads API documentation only; it does not configure your Mist tenant.
-
-Later, you can check which cached version is available without downloading or changing anything:
-
-```bash
-python scripts/refresh_openapi.py --offline
-```
-
-After a successful download, the tool also makes one small HTTPS request to this
-project's repository to compare your installed skill `VERSION` with the published
-one, and prints a single `NOTE:` line when an update exists. The check never runs
-with `--offline`, never retries, stays silent on any failure, and
-`MIST_SKILL_UPDATE_CHECK=0` disables it.
-
-Automation and test environments can choose a different cache file with `MIST_OPENAPI_PATH`. Use of downloaded Juniper material is subject to Juniper's applicable terms; see [NOTICE](NOTICE).
-
 ## Safety rules built into the skill
 
 - API tokens should come from environment variables, never hardcoded files or chat output.
@@ -183,22 +242,7 @@ Automation and test environments can choose a different cache file with `MIST_OP
 - Live writes and deletes require explicit, last-minute confirmation.
 - The result is read back and compared with the requested outcome.
 
-## Folder map
-
-```text
-mist-api/
-  SKILL.md                 Main instructions and workflow for the assistant
-  CHANGELOG.md             User-facing documentation revisions
-  agents/openai.yaml       Skill information for compatible assistants
-  scripts/                 OpenAPI download and lookup utilities
-  references/              Detailed procedures and troubleshooting notes
-  examples/                Reusable Python examples
-  tests/                   Automated checks for this project
-  LICENSE
-  NOTICE
-```
-
-## Maintainer checks
+## Development
 
 These commands are for developers maintaining this skill; a normal user does not need to run them.
 
@@ -214,14 +258,40 @@ python tools/check_secrets.py
 
 `ruff check` uses the rule set pinned in `ruff.toml` (`E4`, `E7`, `E9`, `F`, and `B`). A local run from this directory matches CI as Ruff's default rules change. No extra install step is required.
 
-User-facing documentation changes are listed in [CHANGELOG.md](CHANGELOG.md).
+GitHub Actions is currently turned off for this repository, so pull requests show no checks. Run the commands above before you merge.
+
+### Folder map
+
+```text
+mist-api/
+  SKILL.md                 Main instructions and workflow for the assistant
+  CHANGELOG.md             User-facing revisions
+  VERSION                  Skill version used by the update notice
+  agents/openai.yaml       Skill information for compatible assistants
+  scripts/                 OpenAPI download and lookup utilities
+  references/              Detailed procedures and troubleshooting notes
+  examples/                Reusable Python examples
+  docs/                    Implementation, usability, and security-audit guides
+  tests/                   Automated checks for this project
+  tools/                   Secret scanner
+  LICENSE
+  NOTICE
+```
+
+## Documentation
+
+| Document | For |
+| --- | --- |
+| [docs/usability.md](docs/usability.md) | Users: getting started, task guides, and common problems |
+| [docs/implementation.md](docs/implementation.md) | Maintainers: architecture, data flow, design decisions, and how to extend |
+| [docs/security-audit.md](docs/security-audit.md) | Observed security checks and network access |
+| [CHANGELOG.md](CHANGELOG.md) | Every user-facing change |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to submit a change |
+| [SECURITY.md](SECURITY.md) | Private vulnerability reporting |
 
 ## License
 
 Authored project files are available under the [MIT License](LICENSE). Juniper content is not included under that license.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for changes and [SECURITY.md](SECURITY.md)
-for private vulnerability reporting.
 
 The project license does not grant rights to vendor documentation, trademarks,
 logos, API services, or tenant data. Do not bundle downloaded specifications or
