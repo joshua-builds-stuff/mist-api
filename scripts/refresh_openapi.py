@@ -35,10 +35,10 @@ except ImportError:  # Direct execution: ``python scripts/refresh_openapi.py``.
 
 
 SPEC_URL = (
-    "https://www.juniper.net/documentation/us/en/software/mist/api/static/exports/"
-    "mist-api-openapi31json.json"
+    "https://networkingdocs.hpe.com/documentation/us/en/software/mist/api/static/"
+    "exports/mist-api-openapi31json.json"
 )
-_OFFICIAL_HOST = "www.juniper.net"
+_OFFICIAL_HOST = "networkingdocs.hpe.com"
 _DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 _REQUEST_TIMEOUT_SECONDS = 30
 _USER_AGENT = "mist-api-skill/1.0"
@@ -90,7 +90,7 @@ def _require_official_https_url(url: str) -> None:
         or port not in (None, 443)
     ):
         raise RefreshError(
-            "redirect blocked: downloads must remain on https://www.juniper.net"
+            f"redirect blocked: downloads must remain on https://{_OFFICIAL_HOST}"
         )
 
 

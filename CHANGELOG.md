@@ -1,5 +1,13 @@
 # Revision history
 
+## 1.0.1 — 2026-11-18
+
+Fix the OpenAPI download. `VERSION` is 1.0.1.
+
+- Juniper moved the Mist OpenAPI export to `networkingdocs.hpe.com`. The old `www.juniper.net` address returns a 301 redirect to the new host. `refresh_openapi.py` blocked that redirect, so every download failed with `redirect blocked`.
+- `refresh_openapi.py` now downloads from `https://networkingdocs.hpe.com/documentation/us/en/software/mist/api/static/exports/mist-api-openapi31json.json`. The host check is unchanged in strength: HTTPS only, the exact host, port 443, no user information, and no redirect to another host, including `www.juniper.net`.
+- Installations on 1.0.0 cannot download the export. Their existing valid caches still work. Update the skill to 1.0.1, then run `python scripts/refresh_openapi.py`.
+
 ## 2026-11-10 — minor
 
 Documentation sync and cleanup. No install, upgrade, environment, API, or security-facing behavior change.
